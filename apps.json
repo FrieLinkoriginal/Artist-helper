@@ -7,7 +7,7 @@
     "emoji": "🔠",
     "url": "./apps/ascii-glyph/index.html",
     "type": "HTML",
-    "color": "#f4d875"
+    "color": "#f7d967"
   },
   {
     "id": "atelier-95",
@@ -17,7 +17,7 @@
     "emoji": "🖥️",
     "url": "./apps/atelier-95/index.html",
     "type": "HTML",
-    "color": "#b7dce6"
+    "color": "#b8d9f2"
   },
   {
     "id": "type-garden",
@@ -27,7 +27,7 @@
     "emoji": "🌷",
     "url": "./apps/type-garden/index.html",
     "type": "HTML",
-    "color": "#c6dfa9"
+    "color": "#d9e6be"
   },
   {
     "id": "wigglypaint",
@@ -37,7 +37,7 @@
     "emoji": "🖍️",
     "url": "./apps/wigglypaint/index.html",
     "type": "HTML",
-    "color": "#f2b6c2"
+    "color": "#f0c6c6"
   },
   {
     "id": "pixel-converter",
@@ -47,7 +47,7 @@
     "emoji": "🧩",
     "url": "./apps/pixel-converter/index.html",
     "type": "HTML",
-    "color": "#b7dce6"
+    "color": "#b8d9f2"
   },
   {
     "id": "stochaster",
@@ -57,7 +57,7 @@
     "emoji": "✨",
     "url": "./apps/stochaster/index.html",
     "type": "HTML",
-    "color": "#d4c1e5"
+    "color": "#d7c8e7"
   },
   {
     "id": "tellybox",
@@ -67,7 +67,7 @@
     "emoji": "📺",
     "url": "./apps/tellybox/index.html",
     "type": "HTML",
-    "color": "#f5bf91"
+    "color": "#f4c99f"
   },
   {
     "id": "paper-free",
@@ -77,6 +77,16 @@
     "emoji": "📝",
     "url": "./apps/paper-free/index.html",
     "type": "HTML",
-    "color": "#f2b6c2"
+    "color": "#f0c6c6"
+  },
+  {
+    "id": "orbit-3d",
+    "title": "Orbit — Studio de texte 3D",
+    "description": "Compose des textes en 3D, règle la caméra et exporte tes créations.",
+    "category": "3D & typographie",
+    "emoji": "🧊",
+    "url": "./apps/orbit-3d/index.html",
+    "type": "HTML · 3D",
+    "color": "#c2d9ff"
   }
 ]

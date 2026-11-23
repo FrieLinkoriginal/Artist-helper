@@ -1,8 +1,8 @@
-# Art Helper — la boîte à outils créative
+# Art Helper — Bureau 95
 
-Une page d'accueil dessinée à la main pour réunir tes logiciels HTML. Les huit outils du dossier Google Drive **Art helper** sont maintenant copiés dans `apps/` et accessibles depuis le carrousel. Le site et les outils sont des fichiers statiques : pas d'installation, de compte ou de contenu à ajouter pour les visiteurs.
+Un bureau créatif inspiré de Windows 95, avec une roue de logiciels en perspective 3D. Les visiteurs ouvrent les programmes préinstallés depuis le carrousel ou le menu Démarrer : il n'y a pas de fonction pour ajouter, téléverser ou configurer ses propres sites.
 
-## Outils inclus
+## Logiciels intégrés
 
 - ASCII Glyph
 - Atelier 95
@@ -12,31 +12,15 @@ Une page d'accueil dessinée à la main pour réunir tes logiciels HTML. Les hui
 - Stochaster
 - Tellybox
 - Paper Free
+- Orbit — Studio de texte 3D (depuis Google Drive)
 
-Les fichiers sont servis par le site lui-même, plutôt que renvoyés vers les aperçus Google Drive, qui ne lanceraient pas les applications HTML comme des pages web. Les fichiers copiés sont des instantanés : une modification ultérieure dans Drive ne met pas automatiquement à jour la copie ici.
+Chaque programme est embarqué comme page HTML dans `apps/`. Ils s'ouvrent en un clic; certains outils peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
 
-## Ajouter ou mettre à jour un outil
+## Publier avec GitHub Pages
 
-Place la page HTML dans un dossier sous `apps/` (par exemple `apps/mon-outil/index.html`), puis ajoute une entrée dans `apps.json` :
+Dans **Settings → Pages**, choisis la branche de publication et le dossier `/ (root)`. Le dépôt est déjà configuré pour GitHub Pages.
 
-```json
-{
-  "id": "mon-outil",
-  "title": "Mon outil",
-  "description": "Une courte description.",
-  "category": "Création",
-  "emoji": "🎨",
-  "url": "./apps/mon-outil/index.html",
-  "type": "HTML",
-  "color": "#f4d875"
-}
-```
-
-## Publication pour les visiteurs
-
-Après la fusion de la pull request, active **Settings → Pages** dans GitHub, en choisissant la branche `main` et le dossier `/ (root)`. GitHub Pages donnera une adresse publique à partager. Les visiteurs n'auront rien à téléverser ou configurer.
-
-Pour tester localement, lance un serveur statique à la racine du dépôt :
+Pour tester localement :
 
 ```bash
 python3 -m http.server 8000
