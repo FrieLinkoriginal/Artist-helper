@@ -1,33 +1,42 @@
 # Art Helper — la boîte à outils créative
 
-Une petite page d'accueil dessinée à la main pour réunir les logiciels HTML du projet. Elle fonctionne sans installation ni dépendance : HTML, CSS et JavaScript natifs, prête pour GitHub Pages.
+Une page d'accueil dessinée à la main pour réunir tes logiciels HTML. Les huit outils du dossier Google Drive **Art helper** sont maintenant copiés dans `apps/` et accessibles depuis le carrousel. Le site et les outils sont des fichiers statiques : pas d'installation, de compte ou de contenu à ajouter pour les visiteurs.
 
-## Ajouter un logiciel
+## Outils inclus
 
-1. Place le fichier (ou le dossier) de ton logiciel dans `apps/`. Par exemple : `apps/palette/index.html`.
-2. Ajoute une entrée dans `apps.json` :
+- ASCII Glyph
+- Atelier 95
+- Type Garden — Herbier
+- WigglyPaint
+- Pixel Converter
+- Stochaster
+- Tellybox
+- Paper Free
+
+Les fichiers sont servis par le site lui-même, plutôt que renvoyés vers les aperçus Google Drive, qui ne lanceraient pas les applications HTML comme des pages web. Les fichiers copiés sont des instantanés : une modification ultérieure dans Drive ne met pas automatiquement à jour la copie ici.
+
+## Ajouter ou mettre à jour un outil
+
+Place la page HTML dans un dossier sous `apps/` (par exemple `apps/mon-outil/index.html`), puis ajoute une entrée dans `apps.json` :
 
 ```json
-[
-  {
-    "id": "palette-magique",
-    "title": "Palette magique",
-    "description": "Crée une palette de couleurs pour ton prochain dessin.",
-    "category": "Couleurs",
-    "emoji": "🎨",
-    "url": "./apps/palette/index.html",
-    "type": "HTML"
-  }
-]
+{
+  "id": "mon-outil",
+  "title": "Mon outil",
+  "description": "Une courte description.",
+  "category": "Création",
+  "emoji": "🎨",
+  "url": "./apps/mon-outil/index.html",
+  "type": "HTML",
+  "color": "#f4d875"
+}
 ```
 
-Les chemins peuvent aussi pointer vers une autre page du dépôt (`./mon-outil.html`) ou vers un site externe en HTTPS. Tu peux ajouter `color` (couleur pastel CSS) et `tags` (mots-clés, sous forme de texte) en option. Les champs `id`, `title` et `url` doivent être uniques/adaptés à chaque outil. Les pages externes qui interdisent l'intégration restent ouvrables dans un nouvel onglet.
+## Publication pour les visiteurs
 
-3. Enregistre tes changements et publie le dépôt. Dans GitHub, ouvre **Settings → Pages**, choisis la branche du dépôt et le dossier `/ (root)`. La page sera ensuite servie par GitHub Pages.
+Après la fusion de la pull request, active **Settings → Pages** dans GitHub, en choisissant la branche `main` et le dossier `/ (root)`. GitHub Pages donnera une adresse publique à partager. Les visiteurs n'auront rien à téléverser ou configurer.
 
-## En local
-
-Ouvre `index.html` depuis un petit serveur statique (la page charge `apps.json` avec `fetch`, qui ne fonctionne pas toujours depuis une URL `file://`). Par exemple, avec Python :
+Pour tester localement, lance un serveur statique à la racine du dépôt :
 
 ```bash
 python3 -m http.server 8000
