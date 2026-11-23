@@ -1,1 +1,82 @@
-[]
+[
+  {
+    "id": "ascii-glyph",
+    "title": "ASCII Glyph",
+    "description": "Transforme une image, un GIF ou une vidéo en création typographique ASCII.",
+    "category": "Image & pixel",
+    "emoji": "🔠",
+    "url": "./apps/ascii-glyph/index.html",
+    "type": "HTML",
+    "color": "#f4d875"
+  },
+  {
+    "id": "atelier-95",
+    "title": "Atelier 95",
+    "description": "Fabrique des scènes et des captures rétro dans l'univers de Windows 95.",
+    "category": "Création",
+    "emoji": "🖥️",
+    "url": "./apps/atelier-95/index.html",
+    "type": "HTML",
+    "color": "#b7dce6"
+  },
+  {
+    "id": "type-garden",
+    "title": "Type Garden — Herbier",
+    "description": "Tape tes mots et regarde pousser un jardin de fleurs typographiques.",
+    "category": "Typographie",
+    "emoji": "🌷",
+    "url": "./apps/type-garden/index.html",
+    "type": "HTML",
+    "color": "#c6dfa9"
+  },
+  {
+    "id": "wigglypaint",
+    "title": "WigglyPaint",
+    "description": "Dessine, anime tes traits et exporte tes créations en GIF.",
+    "category": "Dessin & animation",
+    "emoji": "🖍️",
+    "url": "./apps/wigglypaint/index.html",
+    "type": "HTML",
+    "color": "#f2b6c2"
+  },
+  {
+    "id": "pixel-converter",
+    "title": "Pixel Converter",
+    "description": "Transforme images et vidéos avec des effets pixel et des palettes rétro.",
+    "category": "Image & pixel",
+    "emoji": "🧩",
+    "url": "./apps/pixel-converter/index.html",
+    "type": "HTML",
+    "color": "#b7dce6"
+  },
+  {
+    "id": "stochaster",
+    "title": "Stochaster",
+    "description": "Un atelier graphique rétro pour créer et transformer des motifs visuels.",
+    "category": "Création",
+    "emoji": "✨",
+    "url": "./apps/stochaster/index.html",
+    "type": "HTML",
+    "color": "#d4c1e5"
+  },
+  {
+    "id": "tellybox",
+    "title": "Tellybox",
+    "description": "Mets tes enregistrements d’écran en scène sur un écran rétro inclinable.",
+    "category": "Image & vidéo",
+    "emoji": "📺",
+    "url": "./apps/tellybox/index.html",
+    "type": "HTML",
+    "color": "#f5bf91"
+  },
+  {
+    "id": "paper-free",
+    "title": "Paper Free",
+    "description": "Six générateurs créatifs et des exports pour tes idées typographiques.",
+    "category": "Typographie",
+    "emoji": "📝",
+    "url": "./apps/paper-free/index.html",
+    "type": "HTML",
+    "color": "#f2b6c2"
+  }
+]

@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tellybox — un enregistrement d'écran filmé sur un vrai écran</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --bg2:#111114; --panel:#141418; --line:#24242b; --line2:#2e2e37;
+    --txt:#e9e9ee; --dim:#8b8b98; --acc:#ff9f45; --acc2:#5aa9ff; --ok:#57d68a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  #app{display:flex; flex-direction:column; height:100%}
+
+  header{
+    display:flex; align-items:center; gap:14px; padding:10px 16px;
+    border-bottom:1px solid var(--line); background:linear-gradient(#16161a,#101013);
+    flex:0 0 auto;
+  }
+  .brand{display:flex; align-items:baseline; gap:8px; letter-spacing:.22em; font-weight:700; font-size:13px}
+  .brand b{color:#fff}
+  .brand span{letter-spacing:.12em; font-weight:500; font-size:10px; color:var(--acc);
+    border:1px solid rgba(255,159,69,.4); border-radius:4px; padding:1px 5px}
+  .tools{display:flex; align-items:center; gap:8px; margin-left:auto}
+  .btn{
+    appearance:none; border:1px solid var(--line2); background:#1a1a20; color:var(--txt);
+    padding:7px 12px; border-radius:7px; font-size:12px; cursor:pointer; transition:.15s;
+    display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+  }
+  .btn:hover{background:#22222a; border-color:#3a3a46}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:linear-gradient(#ffb463,#f08b2b); border-color:#c9741f; color:#231402; font-weight:600}
+  .btn.primary:hover{background:linear-gradient(#ffc07a,#f4952f)}
+  .btn.on{border-color:rgba(255,159,69,.65); box-shadow:0 0 0 1px rgba(255,159,69,.25) inset}
+  .sep{width:1px; height:22px; background:var(--line); margin:0 4px}
+
+  main{display:flex; min-height:0; flex:1}
+  .stage{
+    position:relative; flex:1 1 auto; min-width:0; background:
+      radial-gradient(120% 90% at 50% 40%, #17171b 0%, #08080a 70%);
+    display:flex; flex-direction:column;
+  }
+  .viewport{position:relative; flex:1; min-height:0; padding:18px; display:flex}
+  #gl{
+    width:100%; height:100%; object-fit:contain; display:block;
+    border-radius:6px; background:#000;
+    box-shadow:0 24px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04);
+  }
+  #drop{
+    position:absolute; inset:18px; border:1.5px dashed rgba(255,255,255,.18); border-radius:8px;
+    display:none; align-items:center; justify-content:center; text-align:center; gap:10px;
+    background:rgba(8,8,10,.82); color:var(--txt); font-size:14px; letter-spacing:.02em; z-index:5;
+    pointer-events:none;
+  }
+  #drop.on{display:flex}
+  #drop b{color:var(--acc)}
+
+  .transport{
+    flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:8px 18px 14px;
+  }
+  .transport .tbtn{
+    width:32px; height:32px; border-radius:50%; border:1px solid var(--line2); background:#1a1a20;
+    color:var(--txt); cursor:pointer; font-size:12px; display:grid; place-items:center;
+  }
+  .transport .tbtn:hover{background:#22222a}
+  #seek{
+    -webkit-appearance:none; appearance:none; height:4px; border-radius:3px; flex:1;
+    background:#26262e; outline:none;
+  }
+  #seek::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:var(--acc); border:none; cursor:pointer; box-shadow:0 0 0 3px rgba(255,159,69,.18);
+  }
+  #seek::-moz-range-thumb{width:12px;height:12px;border:none;border-radius:50%;background:var(--acc);cursor:pointer}
+  #tc{font-variant-numeric:tabular-nums; color:var(--dim); font-size:11.5px; min-width:96px; text-align:right}
+
+  aside.panel{
+    flex:0 0 322px; border-left:1px solid var(--line); background:var(--panel);
+    overflow-y:auto; padding:14px 14px 28px;
+  }
+  aside.panel::-webkit-scrollbar{width:9px}
+  aside.panel::-webkit-scrollbar-thumb{background:#26262e; border-radius:6px}
+
+  .grp{margin-bottom:16px}
+  .grp h3{
+    margin:0 0 9px; font-size:10.5px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--dim); font-weight:600;
+  }
+  .seg{display:flex; gap:6px; margin-bottom:10px}
+  .seg button{
+    flex:1; padding:8px 0; border-radius:7px; border:1px solid var(--line2); background:#1a1a20;
+    color:var(--dim); font-size:12px; cursor:pointer; transition:.15s;
+  }
+  .seg button:hover{color:var(--txt)}
+  .seg button.on{background:rgba(255,159,69,.14); border-color:rgba(255,159,69,.55); color:#ffc48c}
+
+  .moves{display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin:8px 0 10px}
+  .move{
+    display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 2px 6px;
+    border-radius:8px; border:1px solid var(--line2); background:#1a1a20; color:var(--dim);
+    font-size:10.5px; letter-spacing:.01em; cursor:pointer; transition:.14s; line-height:1.15;
+    text-align:center;
+  }
+  .move svg{width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.7;
+    stroke-linecap:round; stroke-linejoin:round}
+  .move:hover{background:#22222a; color:var(--txt)}
+  .move.on{background:rgba(255,159,69,.15); border-color:rgba(255,159,69,.6); color:#ffc48c}
+  .move.on svg{stroke:#ffc48c}
+
+  .row{display:flex; align-items:center; gap:10px; margin:7px 0}
+  .row label{flex:0 0 128px; font-size:12px; color:#c9c9d3}
+  .row .val{
+    flex:0 0 40px; text-align:right; font-size:11.5px; color:var(--dim);
+    font-variant-numeric:tabular-nums;
+  }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; flex:1 1 0; min-width:40px; height:3px;
+    background:#2b2b34; border-radius:3px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%; background:#e6e6ec;
+    border:none; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.6);
+  }
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;background:#e6e6ec;cursor:pointer}
+  input[type=range]:hover::-webkit-slider-thumb{background:#fff}
+
+  .chk{display:flex; align-items:center; gap:8px; font-size:12px; color:#c9c9d3; margin:8px 0}
+  .chk input{accent-color:var(--acc); width:14px; height:14px}
+  select{
+    width:100%; background:#1a1a20; color:var(--txt); border:1px solid var(--line2);
+    border-radius:7px; padding:7px 9px; font-size:12px; outline:none;
+  }
+  input[type=color]{
+    -webkit-appearance:none; appearance:none; width:34px; height:24px; padding:0; border:1px solid var(--line2);
+    border-radius:5px; background:#1a1a20; cursor:pointer;
+  }
+  input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+  input[type=color]::-webkit-color-swatch{border:none; border-radius:3px}
+
+  .hint{color:var(--dim); font-size:11.5px; line-height:1.5; margin:10px 0 0}
+  .hint b{color:#cfcfd8; font-weight:600}
+  .kbd{border:1px solid var(--line2); border-radius:4px; padding:0 4px; font-size:10.5px; color:#b9b9c4}
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(14px);
+    background:#1c1c22; border:1px solid var(--line2); color:var(--txt); padding:9px 16px;
+    border-radius:9px; font-size:12.5px; opacity:0; pointer-events:none; transition:.25s; z-index:40;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  #toast.on{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  #rec{
+    position:absolute; top:26px; left:26px; display:none; align-items:center; gap:8px;
+    background:rgba(20,20,24,.86); border:1px solid #3a3a46; border-radius:20px; padding:6px 12px;
+    font-size:11.5px; letter-spacing:.06em; z-index:6;
+  }
+  #rec.on{display:flex}
+  #rec i{width:8px; height:8px; border-radius:50%; background:#ff4d4d; animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  @media (max-width:900px){
+    main{flex-direction:column}
+    .stage{flex:0 0 54%; min-height:0}
+    .viewport{padding:10px}
+    #drop{inset:10px}
+    aside.panel{flex:1 1 46%; min-height:0; border-left:none; border-top:1px solid var(--line)}
+    .row label{flex-basis:104px}
+    header{flex-wrap:wrap; gap:8px; padding:8px 10px}
+    .brand span{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>TELLYBOX</b><span>WEB</span></div>
+    <div class="tools">
+      <button class="btn" id="btnOpen">Ouvrir un enregistrement…</button>
+      <button class="btn" id="btnDemo">Démo</button>
+      <span class="sep"></span>
+      <button class="btn" id="btnPng">PNG</button>
+      <button class="btn primary" id="btnWebm">Exporter la vidéo</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="viewport">
+        <canvas id="gl" width="1280" height="720"></canvas>
+        <div id="drop"><span>Déposez un <b>enregistrement d'écran</b> (vidéo ou image) ici</span></div>
+        <div id="rec"><i></i><span id="recTxt">REC 0:00</span></div>
+      </div>
+      <div class="transport">
+        <button class="tbtn" id="btnPlay" title="Lecture / pause">❚❚</button>
+        <input type="range" id="seek" min="0" max="1000" value="0">
+        <span id="tc">0:00 / 0:00</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="grp">
+        <h3>Screen</h3>
+        <div class="seg" id="segScreen">
+          <button data-t="0" class="on">LCD</button>
+          <button data-t="1">CRT</button>
+          <button data-t="2">Phone</button>
+        </div>
+        <div class="row"><label>Preset</label>
+          <select id="preset">
+            <option value="doc">Documentaire</option>
+            <option value="crt">CRT rétro</option>
+            <option value="phone">Téléphone</option>
+            <option value="clean">Net (témoin)</option>
+          </select>
+        </div>
+        <label class="chk"><input type="checkbox" id="recShape" checked>Recording Shape</label>
+      </div>
+
+      <div id="ctrls"></div>
+
+      <div class="grp">
+        <h3>Couleur du moiré</h3>
+        <div class="row"><label>Moire Colour</label><input type="color" id="moireCol" value="#8fd7ff">
+          <span style="flex:1"></span></div>
+        <label class="chk"><input type="checkbox" id="glowOnly">Flicker Glow Only</label>
+      </div>
+
+      <div class="grp">
+        <h3>Shot</h3>
+        <div class="row"><label>Caméra</label>
+          <button class="btn" id="btnReset" style="flex:1">Réinitialiser les réglages</button></div>
+      </div>
+
+      <p class="hint">
+        <b>Comment faire :</b> déposez un enregistrement d'écran, choisissez l'écran (LCD, CRT, Phone),
+        puis bougez <b>Tilt</b>, <b>Push In</b> et <b>Focus Blur</b>. Le raccourci <span class="kbd">espace</span>
+        lance la pause, <span class="kbd">E</span> exporte la vidéo.
+      </p>
+    </aside>
+  </main>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="file" accept="video/*,image/*" hidden>
+
+<script type="text/javascript">
+/* =====================================================================
+   TELLYBOX WEB — un enregistrement d'écran, filmé sur un vrai écran
+   Rendu : WebGL (plan en perspective + trame de sous-pixels + optique)
+   ===================================================================== */
+(function(){
+'use strict';
+
+/* ---------- paramètres ---------- */
+const SPEC = [
+  { g:'Camera', items:[
+    ['tiltX','Tilt X',-40,40,0.5,12],
+    ['tiltY','Tilt Y',-40,40,0.5,-17],
+    ['framing','Close-up',0,100,1,0],
+    ['moveAmt','Intensité',0,100,1,55],
+    ['moveSpeed','Durée (s)',3,20,0.5,9],
+  ]},
+  { g:'Lens', items:[
+    ['bulge','Lens Bulge',-100,100,1,-8],
+    ['blur','Focus Blur',0,100,1,38],
+    ['shift','Focus Shift',-100,100,1,6],
+    ['angle','Focus Angle',0,180,1,86],
+    ['pull','Focus Pull',0,100,1,14],
+    ['ca','Chromatic Ab.',0,100,1,24],
+    ['split','RGB Split',0,100,1,5],
+  ]},
+  { g:'Screen', items:[
+    ['px','Screen Pixels',140,1400,10,240],
+    ['expo','Brightness',40,200,1,86],
+    ['moire','Moire',0,100,1,0],
+    ['bands','Moire Bands',0,100,1,48],
+    ['mspeed','Moire Speed',0,100,1,28],
+    ['flicker','Flicker',0,100,1,8],
+    ['fspeed','Flicker Speed',0,100,1,42],
+    ['glow','Glow',0,100,1,32],
+    ['sheen','Glare',0,100,1,26],
+    ['vignette','Vignette',0,100,1,42],
+    ['grain','Grain',0,100,1,14],
+  ]},
+];
+
+const P = { type:0, recShape:true, glowOnly:false, moireCol:'#8fd7ff', move:'drift' };
+SPEC.forEach(s=>s.items.forEach(it=>{ P[it[0]] = it[5]; }));
+
+const MOVES = [
+  ['static','Fixe','<rect x="4" y="4" width="16" height="16" rx="2"/>'],
+  ['push','Push In','<path d="M4 10V4h6M20 14v6h-6"/><path d="M4 4l6 6M20 20l-6-6"/>'],
+  ['pull','Pull Out','<path d="M10 4H4v6M14 20h6v-6"/><path d="M10 10L4 4M14 14l6 6"/>'],
+  ['drift','Drift →','<path d="M3 12h15M13 7l5 5-5 5"/>'],
+  ['driftL','Drift ←','<path d="M21 12H6M11 7l-5 5 5 5"/>'],
+  ['panV','Pan ↕','<path d="M12 3v16M7 8l5-5 5 5M7 16l5 5 5-5"/>'],
+  ['orbit','Orbit','<circle cx="12" cy="12" r="4"/><path d="M20 12a8 5 0 1 1-16 0 8 5 0 0 1 16 0z"/>'],
+  ['breathe','Respiration','<path d="M4 12c3-6 5 6 8 0s5 6 8 0"/>'],
+  ['hand','À la main','<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 12V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 12V7a1.5 1.5 0 0 1 3 0v7a6 6 0 0 1-6 6h-1a6 6 0 0 1-5.6-3.8L3 13.5a1.6 1.6 0 0 1 2.9-1.3L8 15"/>'],
+  ['tilt','Bascule','<path d="M4 16l8-9 8 9"/>'],
+];
+
+const PRESETS = {
+  doc:   { type:0, framing:0, tiltX:12, tiltY:-17, move:'drift', moveAmt:60, moveSpeed:9, bulge:-8, blur:38, shift:6, angle:86, pull:14,
+           ca:24, split:4, px:240, expo:86, moire:0, bands:48, mspeed:28, flicker:8, fspeed:42, glow:32, sheen:26, vignette:42, grain:14 },
+  crt:   { type:1, framing:22, tiltX:8, tiltY:-14, move:'push', moveAmt:45, moveSpeed:9, bulge:38, blur:30, shift:0, angle:90, pull:0,
+           ca:36, split:9, px:190, expo:86, moire:34, bands:62, mspeed:46, flicker:30, fspeed:30, glow:34, sheen:18, vignette:58, grain:28 },
+  phone: { type:2, framing:10, tiltX:2, tiltY:-12, move:'orbit', moveAmt:50, moveSpeed:9, bulge:0, blur:34, shift:8, angle:80, pull:10,
+           ca:24, split:3, px:320, expo:88, moire:0, bands:50, mspeed:28, flicker:0, fspeed:42, glow:34, sheen:40, vignette:40, grain:12 },
+  clean: { type:0, framing:0, tiltX:0, tiltY:0, move:'static', moveAmt:0, moveSpeed:9, bulge:0, blur:0, shift:0, angle:90, pull:0,
+           ca:0, split:0, px:700, expo:96, moire:0, bands:50, mspeed:20, flicker:0, fspeed:40, glow:12, sheen:8, vignette:14, grain:5 },
+};
+
+/* ---------- DOM ---------- */
+const $ = s=>document.querySelector(s);
+const canvas = $('#gl');
+const toastEl = $('#toast');
+let toastT = 0;
+function toast(msg, ms){
+  toastEl.textContent = msg; toastEl.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(()=>toastEl.classList.remove('on'), ms||2200);
+}
+
+/* ---------- contrôles ---------- */
+const ctrlsEl = $('#ctrls');
+const sliders = {};
+const moveGrid = document.createElement('div');
+moveGrid.className = 'moves';
+moveGrid.id = 'moves';
+MOVES.forEach(([id,label,icon])=>{
+  const b = document.createElement('button');
+  b.className = 'move'; b.dataset.move = id; b.type = 'button';
+  b.innerHTML = '<svg viewBox="0 0 24 24">'+icon+'</svg><span>'+label+'</span>';
+  b.addEventListener('click', ()=>{ P.move = id; syncMoves(); });
+  moveGrid.append(b);
+});
+function syncMoves(){
+  [...moveGrid.children].forEach(b=>b.classList.toggle('on', b.dataset.move === P.move));
+  if(P.move==='static' && !P.moveAmt) return;
+}
+syncMoves();
+
+SPEC.forEach(sec=>{
+  const g = document.createElement('div'); g.className='grp';
+  const h = document.createElement('h3'); h.textContent = sec.g; g.append(h);
+  if(sec.g === 'Camera'){ g.append(moveGrid) }
+  sec.items.forEach(([key,label,min,max,step,def])=>{
+    const row = document.createElement('div'); row.className='row';
+    const lab = document.createElement('label'); lab.textContent = label;
+    const rng = document.createElement('input');
+    rng.type='range'; rng.min=min; rng.max=max; rng.step=step; rng.value=P[key];
+    const val = document.createElement('span'); val.className='val';
+    const fmt = v=> step<1 ? (+v).toFixed(1) : Math.round(v);
+    val.textContent = fmt(P[key]);
+    rng.addEventListener('input', ()=>{ P[key] = parseFloat(rng.value); val.textContent = fmt(P[key]); });
+    row.append(lab, rng, val); g.append(row);
+    sliders[key] = { rng, val, fmt };
+  });
+  ctrlsEl.append(g);
+});
+function syncControls(){
+  for(const k in sliders){
+    sliders[k].rng.value = P[k];
+    sliders[k].val.textContent = sliders[k].fmt(P[k]);
+  }
+  $('#moireCol').value = P.moireCol;
+  $('#recShape').checked = P.recShape;
+  $('#glowOnly').checked = P.glowOnly;
+  [...$('#segScreen').children].forEach(b=>b.classList.toggle('on', +b.dataset.t === P.type));
+  $('#preset').value = currentPreset || 'doc';
+  syncMoves();
+}
+let currentPreset = 'doc';
+
+$('#segScreen').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  P.type = +b.dataset.t;
+  [...$('#segScreen').children].forEach(x=>x.classList.toggle('on', x===b));
+  currentPreset = null;
+});
+$('#preset').addEventListener('change', e=>{
+  const p = PRESETS[e.target.value]; if(!p) return;
+  Object.assign(P, p); currentPreset = e.target.value; syncControls(); syncMoves();
+});
+$('#recShape').addEventListener('change', e=>{ P.recShape = e.target.checked; });
+$('#glowOnly').addEventListener('change', e=>{ P.glowOnly = e.target.checked; });
+$('#moireCol').addEventListener('input', e=>{ P.moireCol = e.target.value; });
+$('#btnReset').addEventListener('click', ()=>{
+  SPEC.forEach(s=>s.items.forEach(it=>{ P[it[0]] = it[5]; }));
+  Object.assign(P, {type:0, recShape:true, glowOnly:false});
+  currentPreset = 'doc'; P.move='drift'; P.moveAmt=55; syncControls(); syncMoves(); toast('Réglages réinitialisés');
+});
+
+/* ---------- WebGL ---------- */
+const gl = canvas.getContext('webgl', {antialias:false, preserveDrawingBuffer:true, alpha:false})
+        || canvas.getContext('experimental-webgl', {antialias:false, preserveDrawingBuffer:true});
+if(!gl){ document.body.insertAdjacentHTML('beforeend',
+  '<div style="position:fixed;inset:0;display:grid;place-items:center;background:#0b0b0d;color:#e9e9ee;font:14px system-ui;z-index:99">WebGL est nécessaire pour cet effet.</div>');
+  return; }
+
+const VERT = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
+
+const FRAG = `
+precision highp float;
+varying vec2 vUv;
+
+uniform vec2  uRes;
+uniform vec2  uTan;
+uniform mat3  uRt;
+uniform vec3  uC;
+uniform vec2  uSize;
+uniform vec2  uOuter;
+uniform float uRadBody, uRadScreen;
+uniform vec2  uFit;
+uniform vec2  uCPx;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBulge,uBlur,uShift,uAngle,uCA,uSplit;
+uniform float uMoire,uBands,uMSpeed;
+uniform vec3  uMoireCol;
+uniform float uFlickerV;
+uniform float uGlow,uVignette,uGrain,uSheen,uExpo;
+uniform int   uType;
+uniform vec3  uBezel, uWall, uSpill;
+
+float hash21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float sdRound(vec2 p, vec2 b, float r){ vec2 q=abs(p)-b+r; return min(max(q.x,q.y),0.0)+length(max(q,0.0))-r; }
+vec3 texAt(vec2 uv){ return texture2D(uTex, clamp(uv, vec2(0.0), vec2(1.0))).rgb; }
+
+vec3 pixelMask(vec2 spx, out float dim){
+  vec3 m = vec3(1.0);
+  dim = 1.0;
+  if(uType==0){
+    float x = spx.x*3.0;
+    float idx = mod(floor(x), 3.0);
+    float f = fract(x);
+    float on = 0.30 + 0.70*pow(sin(f*3.14159), 1.6);
+    m = vec3(on*on);
+    m.r *= idx<0.5 ? 1.0 : 0.50;
+    m.g *= (idx>0.5 && idx<1.5) ? 1.0 : 0.50;
+    m.b *= idx>1.5 ? 1.0 : 0.50;
+    dim = 0.90 + 0.10*(0.5+0.5*cos(fract(spx.y)*6.28318));
+  } else if(uType==1){
+    float x = spx.x*3.0;
+    float idx = mod(floor(x), 3.0);
+    float f = fract(x);
+    float on = 0.55+0.45*sin(f*3.14159);
+    m = vec3(0.42+0.58*on);
+    m.r *= idx<0.5 ? 1.0 : 0.52;
+    m.g *= (idx>0.5 && idx<1.5) ? 1.0 : 0.52;
+    m.b *= idx>1.5 ? 1.0 : 0.52;
+    dim = 0.66 + 0.34*(0.5+0.5*sin(fract(spx.y)*6.28318));
+  } else {
+    vec2 c = fract(spx*1.5)-0.5;
+    float d = length(c*vec2(1.0,0.75));
+    float on = 1.0-smoothstep(0.18,0.46,d);
+    m = vec3(0.24+0.76*on);
+    dim = 0.94;
+  }
+  return m;
+}
+
+vec3 sampleBlur(vec2 uv, float r){
+  vec3 acc = texAt(uv);
+  if(r < 0.0006) return acc;
+  float w = 1.0;
+  for(int i=0;i<6;i++){
+    float a = float(i)*1.0472;
+    vec2 o = vec2(cos(a),sin(a));
+    acc += texAt(uv + o*r) * 0.55;
+    acc += texAt(uv + o*r*0.55) * 0.45;
+    w += 1.0;
+  }
+  return acc / w;
+}
+
+vec3 hitPlane(vec2 ndc, out bool ok){
+  vec3 rd  = vec3(ndc*uTan, -1.0);
+  vec3 ro  = uRt * (-uC);
+  vec3 rdp = uRt * rd;
+  float denom = abs(rdp.z) < 1e-5 ? 1e-5 : rdp.z;
+  float t = -ro.z / denom;
+  ok = t > 0.0;
+  return ro + t*rdp;
+}
+
+void main(){
+  vec2 ndc = vUv*2.0-1.0;
+  bool hit, hit2;
+  vec3 hp  = hitPlane(ndc, hit);
+  vec3 hp2 = hitPlane(ndc + vec2(2.0/uRes.x, 0.0), hit2);
+
+  vec3 bg = uWall * (0.42 + 0.58*smoothstep(1.75, 0.15, length(ndc*vec2(0.85,1.0))));
+  if(hit){
+    vec2 q = hp.xy / uOuter;
+    float d = max(0.0, length(q) - 1.0);
+    bg += uSpill * exp(-d*2.6) * 0.22;
+    bg += uSpill * exp(-d*7.0) * 0.20;
+  }
+
+  float dBody = sdRound(hp.xy, uOuter, uRadBody);
+  float dScr  = sdRound(hp.xy, uSize,  uRadScreen);
+  float bodyMask = 1.0 - smoothstep(-0.005, 0.005, dBody);
+  float scrMask  = 1.0 - smoothstep(-0.004, 0.004, dScr);
+  if(!hit){ bodyMask = 0.0; scrMask = 0.0; }
+
+  vec3 body = uBezel * (0.72 + 0.28*smoothstep(0.55, 0.05, length(hp.xy/uOuter)));
+  float bevel = smoothstep(-0.030,-0.004,dBody) * (1.0-smoothstep(-0.006,0.0,dBody));
+  body += vec3(0.055,0.055,0.062)*bevel;
+  body *= 0.90 + 0.10*hash21(floor(hp.xy*4000.0));
+
+  vec2 ndcS  = hp.xy  / max(uSize, vec2(1e-4));
+  vec2 ndcS2 = hp2.xy / max(uSize, vec2(1e-4));
+  /* cycles de trame par pixel, sans dérivées GPU */
+  float gx = max(1e-5, abs(ndcS2.x - ndcS.x) * 0.5 * uCPx.x);
+
+  float r2  = dot(ndcS, ndcS);
+  ndcS *= 1.0 + uBulge * r2 * 0.75;
+
+  vec2 cuv = ndcS*0.5 / max(uFit, vec2(1e-3)) + 0.5;
+  float inside = step(0.0,cuv.x)*step(cuv.x,1.0)*step(0.0,cuv.y)*step(cuv.y,1.0);
+
+  vec2 fa = vec2(cos(radians(uAngle)), sin(radians(uAngle)));
+  float db = dot(ndcS, fa) - uShift*0.9;
+  float sharp = exp(-pow(abs(db)*1.45, 2.0));
+  float blurR = uBlur * (1.0-sharp) * 0.055;
+
+  vec2 dir = cuv - 0.5;
+  vec2 offR = dir*(uCA*0.055) + vec2( uSplit*0.012,  uSplit*0.004);
+  vec2 offB = -dir*(uCA*0.055) + vec2(-uSplit*0.012, -uSplit*0.004);
+  vec3 col;
+  col.r = sampleBlur(cuv + offR, blurR).r;
+  col.g = sampleBlur(cuv,        blurR).g;
+  col.b = sampleBlur(cuv + offB, blurR).b;
+
+  vec2 spx = cuv * uCPx;
+  float dim;
+  vec3 m = pixelMask(spx, dim);
+  float fade = smoothstep(0.40, 1.05, gx*3.0);
+  fade = max(fade, clamp(uBlur*(1.0-sharp)*1.6, 0.0, 0.92));   // hors mise au point, la trame se fond
+  vec3 mk = m*dim;
+  float mm = (mk.r+mk.g+mk.b)/3.0;
+  /* modulation autour de 1 : la trame colore sans changer la luminosité */
+  vec3 mask = clamp(vec3(1.0) + (mk - mm)*1.7, 0.0, 1.5);
+  mask = mix(mask, vec3(1.0), fade);
+  col *= mask;
+
+  if(uMoire > 0.001){
+    float mo  = 0.5+0.5*sin(spx.y*0.085*uBands + uTime*uMSpeed*2.2);
+    float mo2 = 0.5+0.5*sin(spx.x*0.061*uBands - uTime*uMSpeed*1.5);
+    float mm = clamp(mo*mo2*1.7, 0.0, 1.0);
+    col = mix(col, col*vec3(0.9,0.95,1.06) + uMoireCol*mm*0.5, uMoire);
+  }
+
+  if(uGlow > 0.001){
+    vec3 b = vec3(0.0);
+    for(int i=0;i<8;i++){
+      float a = float(i)*0.7854;
+      b += texAt(cuv + vec2(cos(a),sin(a))*0.05);
+    }
+    b /= 8.0;
+    b = pow(max(b - 0.62, vec3(0.0)), vec3(2.0)) * 2.4;   // seules les hautes lumières bavent
+    col += b * uGlow;
+  }
+
+  float sh = pow(max(0.0, 1.0 - abs(ndcS.x*0.55 + ndcS.y*0.82 - 0.30)*1.35), 3.0);
+  col += sh * uSheen * 0.16;
+
+  col *= inside * uExpo;
+  col = min(col, vec3(1.0));
+  col *= uFlickerV;
+
+  vec3 outc = mix(bg, body, bodyMask);
+  outc = mix(outc, col, scrMask);
+
+  float vig = smoothstep(1.55, 0.30, length(ndc*vec2(0.86,1.0)));
+  outc *= mix(1.0, vig, uVignette);
+  float g = hash21(vUv*uRes + fract(uTime)*137.0) - 0.5;
+  outc += g * uGrain * 0.085;
+
+  gl_FragColor = vec4(max(outc, 0.0), 1.0);
+}`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + src);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+['uRes','uTan','uRt','uC','uSize','uOuter','uRadBody','uRadScreen','uFit','uCPx','uTex','uTime',
+ 'uBulge','uBlur','uShift','uAngle','uCA','uSplit','uMoire','uBands','uMSpeed','uMoireCol',
+ 'uFlickerV','uGlow','uVignette','uGrain','uSheen','uExpo','uType','uBezel','uWall','uSpill']
+ .forEach(n=>{ U[n] = gl.getUniformLocation(prog, n); });
+
+/* texture */
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([18,18,22,255]));
+
+/* ---------- source (vidéo / image / démo) ---------- */
+const S = { kind:'demo', video:null, img:null, cw:1280, ch:720, w:16, h:9, avg:0.4, ready:false };
+
+/* démo : un faux enregistrement d'écran (éditeur de code) */
+const demo = document.createElement('canvas');
+demo.width = 1280; demo.height = 720;
+const dctx = demo.getContext('2d');
+function drawDemo(t){
+  const w = demo.width, h = demo.height, c = dctx;
+  c.fillStyle = '#f4f1ea'; c.fillRect(0,0,w,h);
+
+  /* barre du navigateur */
+  c.fillStyle = '#e3ded3'; c.fillRect(0,0,w,54);
+  c.fillStyle = '#cfc7b8'; c.beginPath(); c.roundRect(24,14,300,26,13); c.fill();
+  c.fillStyle = '#6c6558'; c.font = '13px -apple-system,Segoe UI,Helvetica,Arial,sans-serif';
+  c.fillText('archive.org / dossier-1987 / registre', 40, 32);
+  ['#e0b3a8','#e6d3a3','#b9d0ad'].forEach((col,i)=>{
+    c.beginPath(); c.arc(w-120+i*26, 27, 6, 0, 7); c.fillStyle = col; c.fill();
+  });
+
+  /* titre */
+  c.fillStyle = '#191712';
+  c.font = '700 44px Georgia, "Times New Roman", serif';
+  c.fillText('Registre des traversées', 64, 132);
+  c.fillStyle = '#6f685c';
+  c.font = '18px -apple-system,Segoe UI,Helvetica,Arial,sans-serif';
+  c.fillText('Fonds maritime · cote 1987/B-114 · numérisé le 14 mars', 64, 164);
+
+  /* colonne de texte */
+  c.fillStyle = '#3a352c';
+  c.font = '16px -apple-system,Segoe UI,Helvetica,Arial,sans-serif';
+  const para = [
+    'Le registre couvre onze traversées entre Cherbourg et',
+    'Halifax, du 3 janvier au 28 novembre 1987. Chaque entrée',
+    'porte le nom du navire, la date d\'appareillage, la nature',
+    'de la cargaison et le nom du capitaine en second.',
+    '',
+    'Les colonnes 4 à 7 ont été complétées à la main, à l\'encre',
+    'noire, après le retour au port. Deux feuillets manquent :',
+    'les pages 41 et 42, découpées au ras de la reliure.'
+  ];
+  para.forEach((line,i)=> c.fillText(line, 64, 214+i*27));
+
+  /* liste à droite */
+  c.fillStyle = '#ffffff'; c.fillRect(660, 196, 560, 300);
+  c.strokeStyle = '#dcd5c6'; c.lineWidth = 2; c.strokeRect(660,196,560,300);
+  c.fillStyle = '#8a8172'; c.font = '600 12px -apple-system,Segoe UI,sans-serif';
+  c.fillText('ENTRÉES', 686, 226);
+  const rows = [
+    ['12 janv.','HALIFAX','62 t'],
+    ['04 févr.','CHERBOURG','58 t'],
+    ['19 mars','HALIFAX','61 t'],
+    ['02 juin','SAINT-JOHN','47 t'],
+    ['23 août','HALIFAX','64 t'],
+    ['11 nov.','CHERBOURG','—']
+  ];
+  c.font = '15px -apple-system,Segoe UI,sans-serif';
+  rows.forEach((r,i)=>{
+    const y = 258 + i*36;
+    if(i===2){ c.fillStyle = '#f6efdd'; c.fillRect(672,y-22,536,32) }
+    c.fillStyle = i===2 ? '#1b1710' : '#4a4438';
+    c.fillText(r[0], 686, y);
+    c.fillText(r[1], 826, y);
+    c.fillText(r[2], 1112, y);
+  });
+
+  /* carte */
+  c.fillStyle = '#e8e4d8'; c.fillRect(64, 440, 560, 232);
+  c.strokeStyle = '#cfc9ba'; c.strokeRect(64,440,560,232);
+  c.strokeStyle = '#b9b2a1'; c.lineWidth = 3;
+  for(let i=0;i<9;i++){
+    c.beginPath(); c.moveTo(64, 470+i*24); c.bezierCurveTo(200, 452+i*24, 380, 500+i*22, 624, 470+i*24); c.stroke();
+  }
+  c.strokeStyle = '#9aa7b8'; c.lineWidth = 5;
+  c.beginPath(); c.moveTo(560, 452); c.bezierCurveTo(520, 530, 470, 560, 420, 668); c.stroke();
+  c.strokeStyle = '#c25b3a'; c.lineWidth = 3.5; c.setLineDash([9,7]);
+  c.beginPath(); c.moveTo(120, 640); c.bezierCurveTo(260, 600, 330, 540, 430, 470); c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = '#c25b3a'; c.beginPath(); c.arc(430,470,9,0,7); c.fill();
+  c.fillStyle = '#514b40'; c.font = '600 14px -apple-system,Segoe UI,sans-serif';
+  c.fillText('Cherbourg', 96, 664);
+  c.fillText('Halifax', 470, 462);
+
+  /* pied de page */
+  c.fillStyle = '#6f685c'; c.font = '13px -apple-system,Segoe UI,sans-serif';
+  const clk = new Date();
+  const ts = String(clk.getHours()).padStart(2,'0')+':'+String(clk.getMinutes()).padStart(2,'0')+':'+String(clk.getSeconds()).padStart(2,'0');
+  c.fillText('Page 12 / 48  ·  ' + ts, 64, 700);
+  /* curseur de saisie clignotant */
+  if(Math.floor(t*1.8)%2===0){ c.fillStyle = '#191712'; c.fillRect(452, 400, 3, 20) }
+}
+drawDemo(0);
+let demoTick = 0;
+
+/* source courante -> texture */
+function uploadSource(){
+  try{
+    if(S.kind==='video' && S.video && S.video.readyState >= 2){
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, S.video);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    }else if(S.kind==='image' && S.img){
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, S.img);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    }else{
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, demo);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    }
+  }catch(e){ /* vidéo pas prête */ }
+}
+
+/* luminance moyenne -> lumière renvoyée sur le mur */
+const avgC = document.createElement('canvas'); avgC.width = 12; avgC.height = 7;
+const avgG = avgC.getContext('2d', {willReadFrequently:true});
+let avgFrame = 0;
+function updateAvg(){
+  if(avgFrame++ % 8) return;
+  let src = null, sw = 0, sh = 0;
+  if(S.kind==='video' && S.video && S.video.readyState>=2){ src=S.video; sw=S.video.videoWidth; sh=S.video.videoHeight }
+  else if(S.kind==='image' && S.img){ src=S.img; sw=S.img.naturalWidth||S.img.width; sh=S.img.naturalHeight||S.img.height }
+  else { src=demo; sw=demo.width; sh=demo.height }
+  if(!src) return;
+  try{
+    avgG.clearRect(0,0,12,7);
+    avgG.drawImage(src,0,0,12,7);
+    const d = avgG.getImageData(0,0,12,7).data;
+    let r=0,g=0,b2=0;
+    for(let i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; b2+=d[i+2]; }
+    const n = d.length/4;
+    S.avgR = r/n/255; S.avgG = g/n/255; S.avgB = b2/n/255;
+  }catch(e){}
+}
+
+/* ---------- matrices ---------- */
+function mat3Mul(a,b){ // column-major 3x3
+  const o = new Float32Array(9);
+  for(let c=0;c<3;c++) for(let r=0;r<3;r++){
+    let s=0; for(let k=0;k<3;k++) s += a[k*3+r]*b[c*3+k];
+    o[c*3+r]=s;
+  }
+  return o;
+}
+function rotX(a){ const c=Math.cos(a), s=Math.sin(a); return new Float32Array([1,0,0, 0,c,s, 0,-s,c]); }
+function rotY(a){ const c=Math.cos(a), s=Math.sin(a); return new Float32Array([c,0,-s, 0,1,0, s,0,c]); }
+function transpose3(m){ return new Float32Array([m[0],m[3],m[6], m[1],m[4],m[7], m[2],m[5],m[8]]); }
+
+/* ---------- état caméra ---------- */
+const CAM = { dist:2.35, halfH:0.70, fov:38*Math.PI/180 };
+const APP = { time:0, playing:true, dur:0 };
+
+/* ---------- boucle ---------- */
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now - last)/1000); last = now;
+
+  // temps : vidéo qui joue, sinon boucle d'animation
+  if(S.kind==='video' && S.video){
+    S.video.muted = true;
+    if(APP.playing && S.video.paused) S.video.play().catch(()=>{});
+    if(!APP.playing && !S.video.paused) S.video.pause();
+    APP.time = S.video.currentTime;
+  }else{
+    if(APP.playing) APP.time += dt;
+  }
+  const loop = Math.max(2, P.moveSpeed || 9);
+  const cyc = (APP.time % loop) / loop;
+  const ease = 0.5 - 0.5*Math.cos(cyc*Math.PI*2);         // 0→1→0
+  const swim = Math.sin(cyc*Math.PI*2);
+
+  // démo animée
+  if(S.kind==='demo'){
+    demoTick++;
+    if(demoTick % 12 === 0) drawDemo(APP.time);
+  }
+
+  uploadSource();
+  updateAvg();
+
+  /* --- géométrie du plan --- */
+  const aspect = S.w / S.h;
+  let hh = CAM.halfH;
+  const phoneMode = (P.type===2);
+  const devAspect = phoneMode ? 9/19.5 : aspect;
+  let hw = hh*devAspect;
+  // garder l'écran dans le cadre
+  const maxHW = 1.28;
+  if(hw > maxHW){ const k = maxHW/hw; hw*=k; hh*=k; }
+  const macro = 1 + (P.framing/100) * 2.8;      // Close-up : on entre dans l'écran
+  hw *= macro; hh *= macro;
+
+  const bezel = P.type===1 ? 0.115 : (P.type===2 ? 0.028 : 0.042);
+  const bezelY = P.type===1 ? 0.10 : bezel;
+  const outer = [hw+bezel*2.1, hh+bezelY*2.1];
+
+  // fit du contenu dans l'écran
+  let fit = [1,1];
+  const screenAspect = hw/hh;
+  if(P.recShape){        // pas de bandes : on recadre
+    if(aspect > screenAspect) fit = [aspect/screenAspect, 1];
+    else fit = [1, screenAspect/aspect];
+  }else{                 // le contenu entier, bandes noires
+    if(aspect > screenAspect) fit = [1, screenAspect/aspect];
+    else fit = [aspect/screenAspect, 1];
+  }
+
+  /* --- mouvement de caméra choisi dans le panneau --- */
+  const amt = (P.moveAmt ?? 55)/100;
+  let dX = 0, dY = 0, dZ = 0, dRX = 0, dRY = 0;
+  const R2D = Math.PI/180;
+  switch(P.move){
+    case 'push':    dZ = -0.34*amt*ease; break;
+    case 'pull':    dZ =  0.30*amt*ease; break;
+    case 'drift':   dX =  0.17*amt*swim; break;
+    case 'driftL':  dX = -0.17*amt*swim; break;
+    case 'panV':    dY =  0.11*amt*swim; break;
+    case 'orbit':   dX =  0.11*amt*Math.cos(cyc*Math.PI*2); dY = 0.07*amt*swim; break;
+    case 'breathe': dZ = -0.12*amt*ease; dRY = 1.6*amt*swim*R2D; break;
+    case 'tilt':    dRY = 3.4*amt*swim*R2D; dZ = -0.10*amt*ease; break;
+    case 'hand': {
+      const t = APP.time;
+      dX = 0.018*amt*(Math.sin(t*1.7)+0.5*Math.sin(t*4.3));
+      dY = 0.014*amt*(Math.cos(t*2.1)+0.5*Math.sin(t*3.1));
+      dRX = 0.55*amt*Math.sin(t*1.3)*R2D;
+      dRY = 0.65*amt*Math.cos(t*1.1)*R2D;
+      break;
+    }
+    default: break;   /* fixe */
+  }
+  const shakeX = Math.sin(now*0.0007)*0.0016 + Math.sin(now*0.0023)*0.0008;
+  const shakeY = Math.cos(now*0.0009)*0.0014;
+
+  const dist = CAM.dist * (1 + dZ);
+  const tiltX = (P.tiltX * Math.PI/180) + dRX;
+  const tiltY = (P.tiltY * Math.PI/180) + dRY;
+  const R = mat3Mul(rotY(tiltY), rotX(tiltX));
+  const Rt = transpose3(R);
+
+  const C = [ -dX + shakeX, -dY + shakeY, -dist ];
+
+  /* --- uniformes --- */
+  gl.viewport(0,0,canvas.width, canvas.height);
+  const tanH = Math.tan(CAM.fov/2);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform2f(U.uTan, tanH*(canvas.width/canvas.height), tanH);
+  gl.uniformMatrix3fv(U.uRt, false, Rt);
+  gl.uniform3f(U.uC, C[0], C[1], C[2]);
+  gl.uniform2f(U.uSize, hw, hh);
+  gl.uniform2f(U.uOuter, outer[0], outer[1]);
+  gl.uniform1f(U.uRadBody, P.type===2 ? hh*0.22 : (P.type===1 ? 0.06 : 0.02));
+  gl.uniform1f(U.uRadScreen, P.type===2 ? hh*0.17 : (P.type===1 ? 0.09 : 0.008));
+  gl.uniform2f(U.uFit, fit[0], fit[1]);
+  const pxN = Math.max(120, P.px);
+  gl.uniform2f(U.uCPx, pxN, Math.max(60, pxN * (S.h/S.w)));
+  gl.uniform1f(U.uTime, APP.time);
+
+  gl.uniform1f(U.uBulge, P.bulge/100*0.85);
+  gl.uniform1f(U.uBlur, P.blur/100);
+  const pull = (P.pull/100) * 1.2 * ease;
+  gl.uniform1f(U.uShift, (P.shift/100) + pull*0.5);
+  gl.uniform1f(U.uAngle, P.angle);
+  gl.uniform1f(U.uCA, P.ca/100);
+  gl.uniform1f(U.uSplit, P.split/100);
+
+  gl.uniform1f(U.uMoire, P.moire/100);
+  gl.uniform1f(U.uBands, Math.max(0.05, P.bands/100*2.0));
+  gl.uniform1f(U.uMSpeed, P.mspeed/100);
+  const mc = hex2rgb(P.moireCol);
+  gl.uniform3f(U.uMoireCol, mc[0], mc[1], mc[2]);
+
+  // flicker : respiration lente -> glitch aléatoire
+  let fl = 1;
+  if(P.flicker>0){
+    const sp = 0.6 + Math.pow(P.fspeed/100, 2)*26;
+    const tt = APP.time*sp;
+    const n = Math.sin(tt*13.7)*Math.sin(tt*7.31+1.7)*Math.sin(tt*3.17+0.4);
+    const amt = P.flicker/100;
+    if(P.glowOnly){ gl.uniform1f(U.uGlow, (46 + amt*80)/100); fl = 1 + amt*0.06*n; }
+    else { gl.uniform1f(U.uGlow, (P.glow)/100); fl = 1 + amt*0.42*n; }
+  }else{
+    gl.uniform1f(U.uGlow, P.glow/100);
+  }
+  gl.uniform1f(U.uFlickerV, fl);
+
+  gl.uniform1f(U.uVignette, P.vignette/100);
+  gl.uniform1f(U.uGrain, P.grain/100);
+  gl.uniform1f(U.uSheen, P.sheen/100);
+  gl.uniform1f(U.uExpo, P.expo/100);
+  gl.uniform1i(U.uType, P.type);
+
+  const bezelCol = P.type===1 ? [0.105,0.10,0.09] : (P.type===2 ? [0.03,0.03,0.035] : [0.055,0.055,0.062]);
+  gl.uniform3f(U.uBezel, bezelCol[0], bezelCol[1], bezelCol[2]);
+  gl.uniform3f(U.uWall, 0.075, 0.079, 0.092);
+  const ar = S.avgR||0.3, ag = S.avgG||0.3, ab = S.avgB||0.34;
+  gl.uniform3f(U.uSpill, ar*0.85+0.05, ag*0.85+0.05, ab*0.9+0.06);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform1i(U.uTex, 0);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // transport
+  if(S.kind==='video' && S.video && isFinite(S.video.duration) && S.video.duration>0){
+    APP.dur = S.video.duration;
+    $('#seek').value = Math.round(S.video.currentTime/S.video.duration*1000);
+    $('#tc').textContent = fmtTime(S.video.currentTime)+' / '+fmtTime(S.video.duration);
+  }else{
+    $('#seek').value = Math.round((APP.time%loop)/loop*1000);
+    $('#tc').textContent = 'boucle '+fmtTime(APP.time%loop);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function hex2rgb(h){
+  h = (h||'#fff').replace('#','');
+  if(h.length===3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255];
+}
+function fmtTime(s){
+  s = Math.max(0, Math.floor(s||0));
+  return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+}
+
+/* ---------- chargement ---------- */
+function setSourceFromFile(f){
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  if(/^video\//.test(f.type)){
+    const v = document.createElement('video');
+    v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.crossOrigin = 'anonymous';
+    v.addEventListener('loadedmetadata', ()=>{
+      S.kind='video'; S.video=v; S.img=null;
+      S.w = v.videoWidth || 16; S.h = v.videoHeight || 9;
+      v.play().catch(()=>{});
+      toast('Enregistrement chargé — '+S.w+'×'+S.h);
+    });
+    v.addEventListener('error', ()=>toast('Impossible de lire cette vidéo'));
+    v.load();
+  }else if(/^image\//.test(f.type)){
+    const im = new Image();
+    im.onload = ()=>{
+      S.kind='image'; S.img=im; S.video=null;
+      S.w = im.naturalWidth; S.h = im.naturalHeight;
+      toast('Image chargée — '+S.w+'×'+S.h);
+    };
+    im.onerror = ()=>toast('Impossible de lire cette image');
+    im.src = url;
+  }else{
+    toast('Format non reconnu (vidéo ou image)');
+  }
+}
+$('#file').addEventListener('change', e=>{ setSourceFromFile(e.target.files[0]); e.target.value=''; });
+$('#btnOpen').addEventListener('click', ()=>$('#file').click());
+$('#btnDemo').addEventListener('click', ()=>{
+  S.kind='demo'; S.video=null; S.img=null; S.w=1280; S.h=720;
+  drawDemo(APP.time); toast('Démo : enregistrement d\'un éditeur de code');
+});
+
+/* glisser-déposer */
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev, e=>{
+  e.preventDefault(); $('#drop').classList.add('on');
+}));
+['dragleave','drop'].forEach(ev=>document.addEventListener(ev, e=>{
+  e.preventDefault();
+  if(ev==='drop' || e.relatedTarget===null) $('#drop').classList.remove('on');
+}));
+document.addEventListener('drop', e=>{
+  const f = e.dataTransfer && e.dataTransfer.files[0];
+  if(f) setSourceFromFile(f);
+});
+
+/* transport */
+$('#btnPlay').addEventListener('click', ()=>{
+  APP.playing = !APP.playing;
+  $('#btnPlay').textContent = APP.playing ? '❚❚' : '▶';
+});
+$('#seek').addEventListener('input', e=>{
+  if(S.kind==='video' && S.video && S.video.duration){
+    S.video.currentTime = e.target.value/1000 * S.video.duration;
+  }else{
+    APP.time = (e.target.value/1000) * 9;
+  }
+});
+
+/* ---------- export ---------- */
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+$('#btnPng').addEventListener('click', ()=>{
+  canvas.toBlob(b=>{ download(b, 'tellybox.png'); toast('Image exportée'); }, 'image/png');
+});
+let rec = null;
+$('#btnWebm').addEventListener('click', ()=>{
+  if(rec){ rec.stop(); return; }
+  const mimes = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  const mime = mimes.find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if(!mime){ toast('Enregistrement vidéo non supporté par ce navigateur'); return; }
+  const stream = canvas.captureStream(30);
+  const chunks = [];
+  rec = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 12_000_000});
+  rec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+  rec.onstop = ()=>{
+    download(new Blob(chunks, {type:'video/webm'}), 'tellybox.webm');
+    $('#rec').classList.remove('on'); $('#btnWebm').textContent='Exporter la vidéo';
+    rec = null; toast('Vidéo exportée');
+  };
+  const dur = (S.kind==='video' && S.video && S.video.duration) ? Math.min(S.video.duration, 30) : 6;
+  rec.start();
+  $('#rec').classList.add('on'); $('#btnWebm').textContent = 'Arrêter';
+  const t0 = performance.now();
+  const tick = setInterval(()=>{
+    const s = (performance.now()-t0)/1000;
+    $('#recTxt').textContent = 'REC '+fmtTime(s);
+    if(s >= dur){ clearInterval(tick); if(rec) rec.stop(); }
+  }, 200);
+});
+
+/* raccourcis */
+document.addEventListener('keydown', e=>{
+  if(e.target.matches('input,select,textarea')) return;
+  if(e.code==='Space'){ e.preventDefault(); $('#btnPlay').click(); }
+  if(e.key.toLowerCase()==='e'){ $('#btnWebm').click(); }
+});
+
+/* démarrage */
+syncControls();
+$('#preset').value = 'doc';
+})();
+</script>
+</body>
+</html>
