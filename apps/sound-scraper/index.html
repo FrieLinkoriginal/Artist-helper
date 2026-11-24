@@ -209,6 +209,7 @@ table.credits{width:100%;border-collapse:collapse;font-size:0.84rem}
 .spinner{width:16px;height:16px;border-radius:50%;border:2px solid rgba(36,229,155,0.25);border-top-color:var(--mint);animation:spin 0.75s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+.backend-notice{max-width:850px;margin:14px auto 0;padding:10px 14px;border:1px solid rgba(245,182,66,.28);border-radius:10px;background:rgba(245,182,66,.07);color:#f3d69b;font-size:.8rem}
 .empty{text-align:center;padding:48px 20px;background:var(--s1);border:1px dashed var(--bdr2);border-radius:18px}
 .empty-icon{font-size:2.2rem;margin-bottom:8px}
 .empty h3{font-size:1.05rem;margin-bottom:4px}
@@ -232,13 +233,14 @@ table.credits{width:100%;border-collapse:collapse;font-size:0.84rem}
     </svg>
     <div class="logo-text">SOUND <span>SCRAPER</span></div>
   </div>
-  <p class="sub">Extracteur de mots &amp; assembleur de phrases musicales — tapez un mot ou une phrase, chaque résultat vient d'une vraie chanson avec export complet (audio + crédits).</p>
+  <p class="sub">Cherchez un mot dans le catalogue de chansons déjà indexé, écoutez un aperçu et ajustez votre extrait.</p>
   <div class="badge-row">
     <span class="badge coral">117 chansons</span>
     <span class="badge mint">6 138 mots indexés</span>
     <span class="badge blue">FR + EN</span>
-    <span class="badge">FastAPI + Whisper</span>
+    <span class="badge">Catalogue cloud</span>
   </div>
+  <p class="backend-notice">La recherche du catalogue et les aperçus iTunes fonctionnent sans serveur. Le scraping live, le mode phrase et les exports demandent un backend FastAPI — GitHub Pages ne l’héberge pas.</p>
 </header>
 
 <!-- TABS -->
@@ -260,7 +262,7 @@ table.credits{width:100%;border-collapse:collapse;font-size:0.84rem}
         <input type="text" id="word-input" placeholder="Tapez un mot (ex : soleil, amour, feu, love, fire, dream...)" autocomplete="off" spellcheck="false"/>
       </div>
       <button type="submit" class="btn btn-primary btn-lg">Chercher</button>
-      <button type="button" class="btn btn-lg" style="background:rgba(255,90,54,0.08);border:1px solid rgba(255,90,54,0.35);color:#ff8e74" id="btn-scrape">🌐 Scraper le web</button>
+      <button type="button" class="btn btn-lg" style="background:rgba(255,90,54,0.08);border:1px solid rgba(255,90,54,0.35);color:#ff8e74" id="btn-scrape">🌐 Scraping live (serveur requis)</button>
     </form>
     <div class="chips">
       <span class="chips-label">Suggestions :</span>
@@ -516,12 +518,63 @@ const hl = (t,w) => { if(!t||!w) return esc(t||''); const re=new RegExp(`(${w.re
 const hd = u => u ? u.replace(/\/\d+x\d+bb\.jpg$/,'/600x600bb.jpg') : '';
 const toast = (m,k='info',t=3500) => { const el=document.createElement('div'); el.className=`toast ${k}`; el.textContent=m; $('toast-stack').appendChild(el); setTimeout(()=>el.remove(),t); };
 
+const SOUND_SCRAPER_API_MESSAGE='Cette fonction nécessite le serveur Sound Scraper, qui n’est pas hébergé avec la page GitHub Pages.';
 function api(url,opts={}){
   return fetch(url,opts).then(async r=>{
-    if(!r.ok){const t=await r.text().catch(()=>r.statusText);throw new Error(t||r.statusText)}
     const ct=r.headers.get('content-type')||'';
+    if(!r.ok){
+      const t=await r.text().catch(()=>r.statusText);
+      if(r.status===404||ct.includes('text/html')) throw new Error(SOUND_SCRAPER_API_MESSAGE);
+      throw new Error(t||r.statusText);
+    }
     return ct.includes('json') ? r.json() : r;
   });
+}
+const SOUND_SCRAPER_SUPABASE='https://xjktoqdcycjpfzgmukdl.supabase.co';
+const SOUND_SCRAPER_PUBLIC_KEY='sb_publishable_7QNqXgJj69h7jst2J8TbHg_0XCbCOLd';
+function normalizeSearchWord(value){
+  return value.normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('fr').replace(/[’]/g,"'").replace(/[^\p{L}\p{N}']/gu,'');
+}
+async function searchIndexedCatalog(word,lang){
+  const norm=normalizeSearchWord(word);
+  if(!norm) return [];
+  const params=new URLSearchParams({
+    select:'id,track_id,raw_word,exact_word,norm_word,start_sec,end_sec,seg_start,seg_end,probability,context_line,language,tracks!inner(id,title,artist,album,release_year,genre,language,duration_ms,preview_url,preview_duration,artwork_url,source_url,source)',
+    norm_word:`eq.${norm}`,
+    order:'probability.desc.nullslast',
+    limit:'100'
+  });
+  if(lang!=='all') params.set('language',`eq.${lang}`);
+  const response=await fetch(`${SOUND_SCRAPER_SUPABASE}/rest/v1/word_occurrences?${params}`,{
+    headers:{apikey:SOUND_SCRAPER_PUBLIC_KEY,Authorization:`Bearer ${SOUND_SCRAPER_PUBLIC_KEY}`},cache:'no-store'
+  });
+  if(!response.ok){
+    const detail=await response.text().catch(()=> '');
+    if(response.status===401||response.status===403) throw new Error('La recherche cloud est bloquée par les droits de lecture Supabase.');
+    throw new Error(`Recherche cloud indisponible (${response.status}). ${detail.slice(0,180)}`);
+  }
+  const rows=await response.json(),seen=new Set(),matches=[];
+  for(const row of rows){
+    const track=row.tracks;
+    if(!track||seen.has(track.id)) continue;
+    seen.add(track.id);
+    const duration=Number(track.preview_duration)||30;
+    const start=Number(row.start_sec)||0,end=Number(row.end_sec)||start+.3;
+    const segStart=Math.max(0,Number(row.seg_start)||start),segEnd=Math.min(duration,Number(row.seg_end)||end);
+    const clipStart=Math.max(segStart,Math.min(start-0.35,Math.max(segStart,segEnd-0.25)));
+    const clipEnd=Math.min(segEnd,Math.max(end+0.55,clipStart+0.4));
+    const contextStart=Math.max(segStart,clipStart-0.75),contextEnd=Math.min(segEnd,clipEnd+0.75);
+    matches.push({
+      occurrence_id:row.id,track_id:track.id,raw_word:row.raw_word,exact_word:row.exact_word,norm_word:row.norm_word,
+      start_sec:start,end_sec:end,seg_start:segStart,seg_end:segEnd,probability:row.probability??1,context_line:row.context_line||'',
+      match_quality:'exact',title:track.title||'',artist:track.artist||'',album:track.album||'',release_year:track.release_year||'',genre:track.genre||'',
+      language:row.language||track.language||'fr',duration_ms:track.duration_ms||0,preview_duration:duration,preview_url:track.preview_url||'',
+      artwork_url:track.artwork_url||'',source_url:track.source_url||'',source:track.source||'',clip_start:clipStart,clip_end:clipEnd,
+      context_start:contextStart,context_end:contextEnd,line_start:segStart,line_end:segEnd
+    });
+    if(matches.length>=30) break;
+  }
+  return matches;
 }
 function dlBlob(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},500)}
 
@@ -548,25 +601,13 @@ async function searchWord(word,opts={}){
   banner.classList.remove('hidden'); btxt.textContent=`Recherche de « ${word} »...`;
 
   try{
-    if(!scrape&&!scrapeMore){
-      const d=await api(`/api/words/search?word=${encodeURIComponent(word)}&lang=${S.lang}&limit=30`);
-      S.matches=d.matches;
-      btxt.textContent=d.matches.length?`${d.matches.length} chansons trouvées.`:`Aucun résultat local — cliquez « Scraper le web ».`;
-      banner.classList.add('hidden');
-    } else {
-      await new Promise((res,rej)=>{
-        const src=new EventSource(`/api/words/scrape-stream?word=${encodeURIComponent(word)}&lang=${S.lang}&target_hits=${scrapeMore?1:2}&max_scan=${scrapeMore?4:6}`);
-        src.onmessage=ev=>{
-          const msg=JSON.parse(ev.data);
-          if(msg.type==='scrape_progress'||msg.type==='scanning') btxt.textContent=msg.message||msg.detail||'Scan...';
-          else if(msg.type==='added') btxt.textContent=`✓ ${msg.title} — ${msg.artist}`;
-          else if(msg.type==='complete'){S.matches=msg.matches;btxt.textContent=`Terminé — ${msg.summary?.new_hits||0} nouvelle(s) chanson(s).`;setTimeout(()=>banner.classList.add('hidden'),1600);src.close();res()}
-          else if(msg.type==='error'){throw new Error(msg.message)}
-        };
-        src.onerror=()=>{src.close();rej(new Error('Connexion interrompue'))};
-      });
+    if(scrape||scrapeMore){
+      throw new Error('Le scraping en direct et la transcription demandent le serveur FastAPI, non hébergé par GitHub Pages. Les mots déjà indexés restent recherchables.');
     }
-  }catch(e){toast(`Erreur : ${e.message}`,'error');banner.classList.add('hidden')}
+    S.matches=await searchIndexedCatalog(word,S.lang);
+    btxt.textContent=S.matches.length?`${S.matches.length} résultat(s) dans le catalogue cloud.`:'Aucun résultat indexé. Le scraping live nécessite le serveur FastAPI Sound Scraper.';
+    banner.classList.add('hidden');
+  }catch(e){toast(e.message,'error',6500);banner.classList.add('hidden')}
   renderResults();
 }
 
@@ -678,10 +719,20 @@ function updateReadout(){
 $('trim-start').addEventListener('input',()=>{if(!S.selected)return;S.selected.clip_start=Math.max(0,Math.min(+$('trim-start').value||0,S.selected.clip_end-0.2));updateReadout();drawWaveform()});
 $('trim-end').addEventListener('input',()=>{if(!S.selected)return;S.selected.clip_end=Math.min(S.selected.preview_duration||30,Math.max(+$('trim-end').value||0,S.selected.clip_start+0.2));updateReadout();drawWaveform()});
 
-// Transport
-$('btn-play-clip').addEventListener('click',()=>{if(!S.selected)return;const a=$('audio-single');a.pause();a.src=`/api/clips/play?track_id=${S.selected.track_id}&start=${S.selected.clip_start.toFixed(3)}&end=${S.selected.clip_end.toFixed(3)}`;a.play().catch(e=>toast('Erreur : '+e.message,'error'))});
+// Transport: play iTunes/Deezer preview directly; no audio proxy is needed for previews.
+let clipStopAt=null;
+function playSelectedPreview(from,to){
+  const m=S.selected;if(!m)return;
+  if(!m.preview_url){toast(SOUND_SCRAPER_API_MESSAGE,'error',6000);return}
+  const a=$('audio-single');clipStopAt=to??null;a.pause();
+  if(a.src!==m.preview_url)a.src=m.preview_url;
+  const begin=()=>{a.currentTime=Math.max(0,from||0);a.play().catch(e=>toast('Aperçu impossible : '+e.message,'error'))};
+  if(a.readyState>=1)begin();else a.addEventListener('loadedmetadata',begin,{once:true});
+}
+$('btn-play-clip').addEventListener('click',()=>{if(!S.selected)return;playSelectedPreview(S.selected.clip_start,S.selected.clip_end)});
 $('btn-loop').addEventListener('click',()=>{S.loopOn=!S.loopOn;$('btn-loop').style.background=S.loopOn?'var(--mint-s)':'';$('btn-loop').style.borderColor=S.loopOn?'rgba(36,229,155,0.45)':''});
-$('btn-play-full').addEventListener('click',()=>{if(!S.selected)return;const a=$('audio-single');a.pause();a.src=`/api/tracks/${S.selected.track_id}/preview`;a.play().catch(e=>toast('Erreur : '+e.message,'error'))});
+$('btn-play-full').addEventListener('click',()=>playSelectedPreview(0,null));
+$('audio-single').addEventListener('timeupdate',()=>{const a=$('audio-single');if(clipStopAt!==null&&a.currentTime>=clipStopAt){a.pause();clipStopAt=null;if(S.loopOn&&S.selected)setTimeout(()=>$('btn-play-clip').click(),120)}});
 $('audio-single').addEventListener('ended',()=>{if(S.loopOn&&S.selected)$('btn-play-clip').click()});
 
 // Presets
