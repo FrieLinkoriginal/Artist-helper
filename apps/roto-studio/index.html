@@ -1,0 +1,1550 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROTO.studio — rotoscopie image par image dans le navigateur</title>
+<style>
+:root{
+  --bg:#07070b; --panel:#0d0d13; --panel2:#11111a; --line:#1f1f2c;
+  --txt:#e9e9f2; --dim:#8b8ba3; --acc:#ff8a3d; --acc2:#19d8f0; --ok:#36d399; --warn:#ffd166;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 var(--mono);overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#23232f;border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+
+.bar{height:46px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0f0f17,#0a0a10)}
+.logo{font-weight:700;letter-spacing:.14em;font-size:14px}
+.logo span{color:var(--acc)}
+.logo b{color:var(--acc2);font-weight:700}
+.badge{padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:var(--dim);font-size:11px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.spacer{flex:1}
+.stat{font-size:11px;color:var(--dim)}
+.stat b{color:var(--txt);font-weight:600}
+#statMode{padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:11px;letter-spacing:.1em;color:var(--dim)}
+#statMode.draw{background:var(--acc);border-color:var(--acc);color:#1a0d02;font-weight:600}
+#statMode.play{background:var(--acc2);border-color:var(--acc2);color:#04121a;font-weight:600}
+#statMode.busy{background:var(--warn);border-color:var(--warn);color:#201a05;font-weight:600}
+
+main{height:calc(100% - 46px);display:grid;grid-template-columns:272px minmax(0,1fr) 274px}
+.col{overflow-y:auto;background:var(--panel);padding:11px}
+.col.left{border-right:1px solid var(--line)}
+.col.right{border-left:1px solid var(--line)}
+.stage{display:flex;flex-direction:column;min-width:0;background:#050508}
+
+.block{border:1px solid var(--line);border-radius:10px;margin-bottom:11px;background:var(--panel2)}
+.block>h2{margin:0;padding:9px 11px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.block>h2 i{width:6px;height:6px;border-radius:50%;background:var(--acc);font-style:normal}
+.block .body{padding:10px}
+.hint{color:var(--dim);font-size:11px;line-height:1.5;margin:0}
+
+.ctrl{margin-bottom:10px}
+.ctrl:last-child{margin-bottom:0}
+.ctrl .lab{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:11px}
+.ctrl .lab span:last-child{color:var(--acc2);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:3px;background:#262634;outline:none;margin:5px 0 0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--acc);border:2px solid #15151f;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border:2px solid #15151f;border-radius:50%;background:var(--acc);cursor:pointer}
+select,input[type=number],input[type=text]{width:100%;background:#0a0a11;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12px}
+input[type=color]{width:100%;height:30px;background:#0a0a11;border:1px solid var(--line);border-radius:7px;padding:2px;cursor:pointer}
+select:focus,input:focus{border-color:var(--acc2);outline:none}
+.row{display:flex;gap:6px}
+.row>*{flex:1;min-width:0}
+button{background:#15151f;border:1px solid var(--line);border-radius:7px;padding:7px 9px;cursor:pointer;transition:.12s;font-size:12px;white-space:nowrap}
+button:hover{border-color:var(--acc2);color:#fff}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#1a0d02;font-weight:600}
+button.primary:hover{filter:brightness(1.1);color:#1a0d02}
+button.ghost{background:transparent}
+button.on{background:var(--acc2);border-color:var(--acc2);color:#04121a;font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+label.check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);cursor:pointer;margin:7px 0 0}
+label.check input{accent-color:var(--acc)}
+
+.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tools button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;font-size:10px;color:var(--dim)}
+.tools button em{font-style:normal;font-size:17px;line-height:1}
+.tools button.on{color:#04121a}
+.swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:7px}
+.swatches button{height:20px;padding:0;border-radius:5px;border:1px solid #00000055}
+.swatches button.on{outline:2px solid var(--acc2);outline-offset:1px}
+
+.canvas-scroll{flex:1;min-height:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:linear-gradient(45deg,#0a0a10 25%,transparent 25%,transparent 75%,#0a0a10 75%) 0 0/22px 22px,
+             linear-gradient(45deg,#0a0a10 25%,#07070c 25%,#07070c 75%,#0a0a10 75%) 11px 11px/22px 22px}
+.paper{position:relative;flex:0 0 auto;box-shadow:0 0 0 1px #000,0 18px 60px rgba(0,0,0,.7);
+  background-image:linear-gradient(45deg,#15151c 25%,transparent 25%,transparent 75%,#15151c 75%),
+                   linear-gradient(45deg,#15151c 25%,#0f0f15 25%,#0f0f15 75%,#15151c 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px}
+#paint{display:block;touch-action:none;cursor:crosshair}
+.empty{position:absolute;inset:0;display:none;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-align:center;color:var(--dim);pointer-events:none}
+.empty strong{color:var(--txt);font-size:15px;letter-spacing:.18em}
+.canvas-scroll.drag{outline:2px dashed var(--acc);outline-offset:-10px}
+.stage.blank .empty{display:flex}
+.stage.blank .paper{min-width:520px;min-height:300px}
+
+.transport{display:flex;align-items:center;gap:7px;padding:7px 12px;border-top:1px solid var(--line);background:var(--panel)}
+.time{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.time b{color:var(--txt)}
+.strip-wrap{border-top:1px solid var(--line);background:#08080d;padding:7px 12px 9px}
+.strip-head{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.strip-head .t{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.strip{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;padding-bottom:5px;min-height:74px}
+.cell{position:relative;flex:0 0 auto;width:92px;border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;background:#000}
+.cell img{display:block;width:100%;height:52px;object-fit:cover;opacity:.75}
+.cell .n{position:absolute;left:0;top:0;padding:1px 4px;font-size:9.5px;background:#000000bb;color:var(--dim)}
+.cell .dot{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:var(--acc);display:none}
+.cell.has .dot{display:block}
+.cell.on{border-color:var(--acc2);outline:1px solid var(--acc2)}
+.cell.on img{opacity:1}
+
+.meter{height:4px;background:#1b1b26;border-radius:4px;overflow:hidden;margin-top:7px}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc2),var(--acc));transition:width .15s}
+.files{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.file{display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#0a0a11}
+.file span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.file a{color:var(--acc2);text-decoration:none}
+.file a:hover{text-decoration:underline}
+.kbd{display:inline-block;min-width:18px;text-align:center;padding:1px 5px;border-radius:4px;border:1px solid var(--line);background:#15151f;color:var(--txt);font-size:10.5px}
+.help ul{margin:0;padding:0}
+.help li{margin-bottom:5px;list-style:none;display:flex;gap:7px;align-items:baseline}
+.help li span.d{color:var(--dim)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#15151f;border:1px solid var(--acc2);color:var(--txt);padding:9px 16px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:60}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+.overlay{position:fixed;inset:0;background:#05050add;display:none;align-items:center;justify-content:center;z-index:70;backdrop-filter:blur(3px)}
+.overlay.show{display:flex}
+.card{width:min(460px,92vw);border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:18px}
+.card h3{margin:0 0 10px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc)}
+@media (max-width:1180px){main{grid-template-columns:240px minmax(0,1fr)}.col.right{display:none}}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="logo">ROTO<span>.</span><b>studio</b></div>
+  <div class="badge" id="badgeSource">aucune vidéo</div>
+  <div class="spacer"></div>
+  <div class="stat">image <b id="statFrame">—</b></div>
+  <div class="stat"><b id="statDrawn">0</b> dessinées</div>
+  <div class="stat"><b id="statSize">—</b></div>
+  <div id="statMode">PRÊT</div>
+</header>
+
+<main>
+  <!-- ============================ outils ============================ -->
+  <aside class="col left">
+    <div class="block">
+      <h2><i></i>Vidéo</h2>
+      <div class="body">
+        <button id="btnOpen" class="primary" style="width:100%">Ouvrir une vidéo</button>
+        <input type="file" id="fileInput" accept="video/*" hidden>
+        <div class="row" style="margin-top:7px">
+          <select id="selFps" title="Images par seconde à extraire">
+            <option value="8">8 im/s</option>
+            <option value="12" selected>12 im/s</option>
+            <option value="15">15 im/s</option>
+            <option value="24">24 im/s</option>
+            <option value="25">25 im/s</option>
+            <option value="30">30 im/s</option>
+          </select>
+          <select id="selWidth" title="Largeur de travail">
+            <option value="640">640 px</option>
+            <option value="854">854 px</option>
+            <option value="960" selected>960 px</option>
+            <option value="1280">1280 px</option>
+            <option value="1920">1920 px</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:7px">
+          <input type="number" id="numMax" value="400" min="2" max="3000" step="10" title="Nombre maximum d'images">
+          <button id="btnClear" class="ghost">Fermer</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Tout reste dans votre navigateur : rien n'est téléversé.</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Outils</h2>
+      <div class="body">
+        <div class="tools" id="toolHost"></div>
+        <div class="ctrl" style="margin-top:10px">
+          <div class="lab"><span>Taille</span><span id="outSize">6 px</span></div>
+          <input type="range" id="rngSize" min="1" max="120" step="1" value="6">
+        </div>
+        <div class="ctrl">
+          <div class="lab"><span>Opacité</span><span id="outAlpha">100 %</span></div>
+          <input type="range" id="rngAlpha" min="5" max="100" step="1" value="100">
+        </div>
+        <div class="ctrl">
+          <div class="lab"><span>Lissage du tracé</span><span id="outSmooth">35 %</span></div>
+          <input type="range" id="rngSmooth" min="0" max="90" step="1" value="35">
+        </div>
+        <input type="color" id="inpColor" value="#ff8a3d">
+        <div class="swatches" id="swatchHost"></div>
+        <label class="check"><input type="checkbox" id="chkPressure" checked> épaisseur selon la pression du stylet</label>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Image courante</h2>
+      <div class="body">
+        <div class="row">
+          <button id="btnUndo" class="ghost" title="Ctrl+Z">↶ Annuler</button>
+          <button id="btnRedo" class="ghost" title="Ctrl+Y">↷ Rétablir</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button id="btnCopyPrev" class="ghost" title="Touche C">⧉ Copier préc.</button>
+          <button id="btnErase" class="ghost" title="Touche X">✕ Effacer</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <input type="number" id="numHold" value="2" min="1" max="48" step="1" title="Nombre d'images">
+          <button id="btnHold" class="ghost" title="Reporter le dessin sur les images suivantes">→ Reporter</button>
+        </div>
+        <p class="hint" style="margin-top:8px">« Reporter » recopie le dessin courant sur les N images suivantes (animation sur deux, sur trois…).</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================ scène ============================ -->
+  <section class="stage blank" id="stage">
+    <div class="canvas-scroll" id="scroll">
+      <div class="paper" id="paper">
+        <canvas id="paint" width="960" height="540"></canvas>
+        <div class="empty">
+          <strong>GLISSEZ UNE VIDÉO ICI</strong>
+          <div>elle est découpée en images, vous dessinez par-dessus</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button id="btnFirst" title="Début">⏮</button>
+      <button id="btnPrev" title="Image précédente (←)">◀</button>
+      <button id="btnPlay" class="primary" style="min-width:92px">▶ Lecture</button>
+      <button id="btnNext" title="Image suivante (→)">▶</button>
+      <button id="btnLast" title="Fin">⏭</button>
+      <div class="time"><b id="timeFrame">0</b> / <span id="timeTotal">0</span> · <span id="timeCode">0:00.00</span></div>
+      <div class="spacer"></div>
+      <label class="check" style="margin:0"><input type="checkbox" id="chkBg" checked> fond vidéo</label>
+      <label class="check" style="margin:0"><input type="checkbox" id="chkLoop" checked> boucle</label>
+      <select id="selPlayFps" style="width:96px" title="Vitesse de lecture">
+        <option value="6">6 im/s</option>
+        <option value="8">8 im/s</option>
+        <option value="12" selected>12 im/s</option>
+        <option value="24">24 im/s</option>
+      </select>
+      <select id="selZoom" style="width:92px" title="Zoom">
+        <option value="fit" selected>Ajuster</option>
+        <option value="0.5">50 %</option>
+        <option value="1">100 %</option>
+        <option value="1.5">150 %</option>
+        <option value="2">200 %</option>
+        <option value="3">300 %</option>
+      </select>
+    </div>
+
+    <div class="strip-wrap">
+      <div class="strip-head">
+        <span class="t">Pellicule</span>
+        <span class="hint" id="stripInfo">—</span>
+        <div class="spacer" style="flex:1"></div>
+        <button id="btnOnlyDrawn" class="ghost" style="padding:4px 8px;font-size:11px">Aller au prochain trou</button>
+      </div>
+      <div class="strip" id="strip"></div>
+    </div>
+  </section>
+
+  <!-- ============================ droite ============================ -->
+  <aside class="col right">
+    <div class="block">
+      <h2><i></i>Pelure d'oignon</h2>
+      <div class="body">
+        <label class="check" style="margin:0"><input type="checkbox" id="chkOnion" checked> activer (touche O)</label>
+        <div class="ctrl" style="margin-top:9px">
+          <div class="lab"><span>Images avant</span><span id="outBefore">2</span></div>
+          <input type="range" id="rngBefore" min="0" max="6" step="1" value="2">
+        </div>
+        <div class="ctrl">
+          <div class="lab"><span>Images après</span><span id="outAfter">1</span></div>
+          <input type="range" id="rngAfter" min="0" max="6" step="1" value="1">
+        </div>
+        <div class="ctrl">
+          <div class="lab"><span>Opacité</span><span id="outOnion">45 %</span></div>
+          <input type="range" id="rngOnion" min="5" max="90" step="1" value="45">
+        </div>
+        <label class="check"><input type="checkbox" id="chkTint" checked> teinter (rouge avant / vert après)</label>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Export</h2>
+      <div class="body">
+        <div class="ctrl">
+          <div class="lab"><span>Fond</span><span></span></div>
+          <select id="selBg">
+            <option value="video">Vidéo d'origine</option>
+            <option value="none" selected>Transparent (dessin seul)</option>
+            <option value="color">Couleur unie</option>
+          </select>
+        </div>
+        <input type="color" id="inpBgColor" value="#ffffff">
+        <div class="row" style="margin-top:8px">
+          <input type="number" id="numFrom" value="1" min="1" step="1" title="Première image">
+          <input type="number" id="numTo" value="1" min="1" step="1" title="Dernière image">
+        </div>
+        <div class="row" style="margin-top:6px">
+          <select id="selScale" title="Échelle d'export">
+            <option value="1" selected>100 %</option>
+            <option value="0.75">75 %</option>
+            <option value="0.5">50 %</option>
+          </select>
+          <select id="selExportFps" title="Images par seconde de la vidéo exportée">
+            <option value="8">8 im/s</option>
+            <option value="12" selected>12 im/s</option>
+            <option value="24">24 im/s</option>
+            <option value="25">25 im/s</option>
+            <option value="30">30 im/s</option>
+          </select>
+        </div>
+        <button id="btnZip" class="primary" style="width:100%;margin-top:8px">⬇ Séquence PNG (ZIP)</button>
+        <button id="btnWebm" style="width:100%;margin-top:6px">⬇ Vidéo WebM</button>
+        <button id="btnStill" class="ghost" style="width:100%;margin-top:6px">⬇ Image courante (PNG)</button>
+        <div class="meter"><i id="meter"></i></div>
+        <p class="hint" id="exportInfo" style="margin-top:7px">Le PNG conserve la transparence, pas le WebM.</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Projet</h2>
+      <div class="body">
+        <div class="row">
+          <button id="btnSaveProject" class="ghost">Enregistrer .json</button>
+          <button id="btnLoadProject" class="ghost">Charger</button>
+        </div>
+        <input type="file" id="projectInput" accept="application/json" hidden>
+        <p class="hint" style="margin-top:8px">Le .json ne contient que les tracés : rechargez la même vidéo avant de l'importer.</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Fichiers produits</h2>
+      <div class="body"><div class="files" id="fileList"><p class="hint" id="noFiles">Rien pour l'instant.</p></div></div>
+    </div>
+
+    <div class="block">
+      <h2><i></i>Raccourcis</h2>
+      <div class="body help">
+        <ul>
+          <li><span class="kbd">←</span><span class="kbd">→</span> <span class="d">image préc. / suiv.</span></li>
+          <li><span class="kbd">Espace</span> <span class="d">lecture / pause</span></li>
+          <li><span class="kbd">B</span><span class="kbd">E</span><span class="kbd">L</span><span class="kbd">F</span> <span class="d">pinceau, gomme, ligne, forme</span></li>
+          <li><span class="kbd">[</span><span class="kbd">]</span> <span class="d">taille du pinceau</span></li>
+          <li><span class="kbd">C</span> <span class="d">copier le dessin précédent</span></li>
+          <li><span class="kbd">X</span> <span class="d">effacer l'image</span></li>
+          <li><span class="kbd">O</span> <span class="d">pelure d'oignon</span></li>
+          <li><span class="kbd">V</span> <span class="d">afficher / cacher le fond</span></li>
+          <li><span class="kbd">Ctrl</span>+<span class="kbd">Z</span> <span class="d">annuler · <span class="kbd">Y</span> rétablir</span></li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h3 id="overlayTitle">Découpage de la vidéo</h3>
+    <p class="hint" id="overlayText">Extraction des images…</p>
+    <div class="meter"><i id="overlayMeter"></i></div>
+    <button id="btnCancel" class="ghost" style="width:100%;margin-top:12px">Annuler</button>
+  </div>
+</div>
+
+<script type="text/javascript">
+/* === ROTO_CORE_START === fonctions pures, testables hors navigateur */
+const CORE = (function () {
+
+  function clamp(value, low, high) {
+    return value < low ? low : (value > high ? high : value);
+  }
+
+  function formatTimecode(seconds) {
+    if (!isFinite(seconds) || seconds < 0) seconds = 0;
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds - minutes * 60;
+    return minutes + ':' + (rest < 10 ? '0' : '') + rest.toFixed(2);
+  }
+
+  function smoothPoint(previous, raw, factor) {
+    if (!previous) return { x: raw.x, y: raw.y, p: raw.p };
+    const weight = clamp(factor, 0, 0.95);
+    return {
+      x: previous.x + (raw.x - previous.x) * (1 - weight),
+      y: previous.y + (raw.y - previous.y) * (1 - weight),
+      p: previous.p + (raw.p - previous.p) * (1 - weight)
+    };
+  }
+
+  function distance(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function strokeBounds(stroke) {
+    const points = stroke.points;
+    if (!points.length) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].x < minX) minX = points[i].x;
+      if (points[i].y < minY) minY = points[i].y;
+      if (points[i].x > maxX) maxX = points[i].x;
+      if (points[i].y > maxY) maxY = points[i].y;
+    }
+    const pad = stroke.size;
+    return { x: minX - pad, y: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
+  }
+
+  function cloneStrokes(strokes) {
+    return strokes.map(function (stroke) {
+      return {
+        tool: stroke.tool,
+        color: stroke.color,
+        size: stroke.size,
+        alpha: stroke.alpha,
+        points: stroke.points.map(function (point) { return { x: point.x, y: point.y, p: point.p }; })
+      };
+    });
+  }
+
+  function packProject(meta, layers) {
+    return {
+      app: 'roto.studio',
+      version: 1,
+      width: meta.width,
+      height: meta.height,
+      fps: meta.fps,
+      frames: meta.frames,
+      layers: layers.map(function (layer) {
+        return layer.strokes.length ? cloneStrokes(layer.strokes) : 0;
+      })
+    };
+  }
+
+  function unpackProject(data, frameCount) {
+    const layers = [];
+    for (let i = 0; i < frameCount; i++) {
+      const entry = data && data.layers ? data.layers[i] : null;
+      layers.push({ strokes: Array.isArray(entry) ? cloneStrokes(entry) : [], redo: [] });
+    }
+    return layers;
+  }
+
+  function fitScale(frameWidth, frameHeight, boxWidth, boxHeight) {
+    if (!frameWidth || !frameHeight || !boxWidth || !boxHeight) return 1;
+    return Math.min(boxWidth / frameWidth, boxHeight / frameHeight, 4);
+  }
+
+  function nextGap(layers, from) {
+    if (!layers.length) return -1;
+    for (let i = from; i < layers.length; i++) if (!layers[i].strokes.length) return i;
+    for (let i = 0; i < from; i++) if (!layers[i].strokes.length) return i;
+    return -1;
+  }
+
+  function LruCache(capacity, onEvict) {
+    this.capacity = capacity;
+    this.onEvict = onEvict || function () {};
+    this.map = new Map();
+  }
+  LruCache.prototype.get = function (key) {
+    if (!this.map.has(key)) return null;
+    const value = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  };
+  LruCache.prototype.has = function (key) { return this.map.has(key); };
+  LruCache.prototype.set = function (key, value) {
+    if (this.map.has(key)) this.map.delete(key);
+    this.map.set(key, value);
+    while (this.map.size > this.capacity) {
+      const oldest = this.map.keys().next().value;
+      const victim = this.map.get(oldest);
+      this.map.delete(oldest);
+      this.onEvict(victim, oldest);
+    }
+  };
+  LruCache.prototype.clear = function () {
+    const self = this;
+    this.map.forEach(function (value, key) { self.onEvict(value, key); });
+    this.map.clear();
+  };
+  LruCache.prototype.size = function () { return this.map.size; };
+
+  return {
+    clamp: clamp,
+    formatTimecode: formatTimecode,
+    smoothPoint: smoothPoint,
+    distance: distance,
+    strokeBounds: strokeBounds,
+    cloneStrokes: cloneStrokes,
+    packProject: packProject,
+    unpackProject: unpackProject,
+    fitScale: fitScale,
+    nextGap: nextGap,
+    LruCache: LruCache
+  };
+})();
+
+const ZIP = (function () {
+  let table = null;
+  function crcTable() {
+    if (table) return table;
+    table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  }
+  function crc32(bytes) {
+    const tab = crcTable();
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) crc = tab[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+  function build(files) {
+    const encoder = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0, centralSize = 0;
+    for (let i = 0; i < files.length; i++) {
+      const name = encoder.encode(files[i].name);
+      const data = files[i].data;
+      const crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(8, 0, true);
+      local.setUint16(10, 0, true);
+      local.setUint16(12, 0x2821, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(local.buffer), name, data);
+      const dir = new DataView(new ArrayBuffer(46));
+      dir.setUint32(0, 0x02014b50, true);
+      dir.setUint16(4, 20, true);
+      dir.setUint16(6, 20, true);
+      dir.setUint16(12, 0x2821, true);
+      dir.setUint32(16, crc, true);
+      dir.setUint32(20, data.length, true);
+      dir.setUint32(24, data.length, true);
+      dir.setUint16(28, name.length, true);
+      dir.setUint32(42, offset, true);
+      central.push(new Uint8Array(dir.buffer), name);
+      centralSize += 46 + name.length;
+      offset += 30 + name.length + data.length;
+    }
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true);
+    end.setUint32(16, offset, true);
+    return parts.concat(central, [new Uint8Array(end.buffer)]);
+  }
+  return { crc32: crc32, build: build };
+})();
+/* === ROTO_CORE_END === */
+</script>
+
+<script type="text/javascript">
+(function () {
+"use strict";
+
+const $ = function (id) { return document.getElementById(id); };
+const paint = $('paint');
+const ctx = paint.getContext('2d');
+const stage = $('stage');
+const scroll = $('scroll');
+const paper = $('paper');
+
+const TOOLS = [
+  { id: 'brush', label: 'Pinceau', icon: '✏️', key: 'b' },
+  { id: 'eraser', label: 'Gomme', icon: '🧽', key: 'e' },
+  { id: 'line', label: 'Ligne', icon: '📏', key: 'l' },
+  { id: 'shape', label: 'Forme', icon: '🔷', key: 'f' },
+  { id: 'rect', label: 'Rectangle', icon: '▭', key: 'r' },
+  { id: 'move', label: 'Naviguer', icon: '✋', key: 'h' }
+];
+const SWATCHES = ['#ff8a3d', '#19d8f0', '#ffffff', '#000000', '#ff2d6f', '#36d399', '#ffd166', '#7b5cff'];
+
+const state = {
+  frames: [],
+  layers: [],
+  index: 0,
+  width: 0,
+  height: 0,
+  fps: 12,
+  tool: 'brush',
+  color: '#ff8a3d',
+  size: 6,
+  alpha: 1,
+  smooth: 0.35,
+  pressure: true,
+  playing: false,
+  playClock: 0,
+  zoom: 'fit',
+  drawing: false,
+  live: null,
+  lastRaw: null,
+  lastPoint: null,
+  lastMid: null,
+  busy: false,
+  cancel: false,
+  videoUrl: null,
+  videoName: ''
+};
+
+const layerCanvas = document.createElement('canvas');
+const layerCtx = layerCanvas.getContext('2d');
+const onionCanvas = document.createElement('canvas');
+const onionCtx = onionCanvas.getContext('2d');
+const exportCanvas = document.createElement('canvas');
+const exportCtx = exportCanvas.getContext('2d');
+
+let pan = null;
+const bitmaps = new CORE.LruCache(120, function (bitmap) { if (bitmap && bitmap.close) bitmap.close(); });
+const pending = new Map();
+const onionCache = new Map();
+
+/* ------------------------------------------------------------ utilitaires */
+function toast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(function () { el.classList.remove('show'); }, 2400);
+}
+
+function setMode(text, className) {
+  const el = $('statMode');
+  el.textContent = text;
+  el.className = className || '';
+}
+
+function toBlobAsync(canvas, type, quality) {
+  return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
+}
+
+function addFile(name, blob, autoDownload) {
+  const url = URL.createObjectURL(blob);
+  const list = $('fileList');
+  const empty = $('noFiles');
+  if (empty) empty.remove();
+  const row = document.createElement('div');
+  row.className = 'file';
+  const label = document.createElement('span');
+  label.textContent = name + ' · ' + (blob.size / 1048576).toFixed(2) + ' Mo';
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.textContent = 'télécharger';
+  row.appendChild(label);
+  row.appendChild(link);
+  list.insertBefore(row, list.firstChild);
+  if (autoDownload) link.click();
+}
+
+/* ------------------------------------------------------------ découpage */
+function waitSeek(video, time) {
+  return new Promise(function (resolve) {
+    let done = false;
+    const finish = function () {
+      if (done) return;
+      done = true;
+      video.removeEventListener('seeked', finish);
+      resolve();
+    };
+    video.addEventListener('seeked', finish);
+    setTimeout(finish, 4000);
+    video.currentTime = time;
+  });
+}
+
+async function loadVideo(file) {
+  if (!file) return;
+  if (state.busy) return;
+  releaseProject();
+  state.videoName = file.name;
+  state.videoUrl = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.preload = 'auto';
+  video.muted = true;
+  video.playsInline = true;
+  video.src = state.videoUrl;
+
+  const ready = await new Promise(function (resolve) {
+    video.onloadeddata = function () { resolve(true); };
+    video.onerror = function () { resolve(false); };
+  });
+  if (!ready || !video.videoWidth) { toast('Fichier vidéo illisible'); return; }
+
+  const fps = Number($('selFps').value);
+  const targetWidth = Math.min(Number($('selWidth').value), video.videoWidth);
+  const width = Math.round(targetWidth / 2) * 2;
+  const height = Math.round(width * video.videoHeight / video.videoWidth / 2) * 2;
+  const duration = isFinite(video.duration) ? video.duration : 0;
+  const maxFrames = CORE.clamp(Number($('numMax').value) || 400, 2, 3000);
+  const count = Math.max(1, Math.min(maxFrames, Math.round(duration * fps)));
+
+  const grab = document.createElement('canvas');
+  grab.width = width; grab.height = height;
+  const grabCtx = grab.getContext('2d');
+  const thumb = document.createElement('canvas');
+  thumb.width = 92; thumb.height = Math.max(1, Math.round(92 * height / width));
+  const thumbCtx = thumb.getContext('2d');
+
+  const type = grab.toDataURL('image/webp').indexOf('image/webp') === 5 ? 'image/webp' : 'image/jpeg';
+  state.busy = true;
+  state.cancel = false;
+  setMode('DÉCOUPAGE', 'busy');
+  $('overlay').classList.add('show');
+  $('overlayTitle').textContent = 'Découpage de la vidéo';
+
+  const frames = [];
+  for (let i = 0; i < count && !state.cancel; i++) {
+    const time = Math.min(Math.max(0, duration - 0.001), i / fps);
+    await waitSeek(video, time);
+    grabCtx.drawImage(video, 0, 0, width, height);
+    thumbCtx.drawImage(grab, 0, 0, thumb.width, thumb.height);
+    const blob = await toBlobAsync(grab, type, 0.88);
+    const thumbBlob = await toBlobAsync(thumb, 'image/jpeg', 0.6);
+    frames.push({ time: time, blob: blob, thumb: URL.createObjectURL(thumbBlob) });
+    const ratio = (i + 1) / count;
+    $('overlayMeter').style.width = (ratio * 100) + '%';
+    $('overlayText').textContent = 'Image ' + (i + 1) + ' / ' + count + '  ·  ' + CORE.formatTimecode(time);
+  }
+
+  URL.revokeObjectURL(state.videoUrl);
+  state.videoUrl = null;
+  $('overlay').classList.remove('show');
+  state.busy = false;
+  setMode('PRÊT', '');
+
+  if (!frames.length) { toast('Aucune image extraite'); return; }
+  state.frames = frames;
+  state.layers = frames.map(function () { return { strokes: [], redo: [] }; });
+  state.width = width;
+  state.height = height;
+  state.fps = fps;
+  state.index = 0;
+
+  paint.width = width; paint.height = height;
+  layerCanvas.width = width; layerCanvas.height = height;
+  onionCanvas.width = width; onionCanvas.height = height;
+  stage.classList.remove('blank');
+  $('badgeSource').textContent = state.videoName + ' · ' + width + '×' + height;
+  $('statSize').textContent = width + '×' + height;
+  $('numFrom').value = 1;
+  $('numTo').value = frames.length;
+  $('numFrom').max = frames.length;
+  $('numTo').max = frames.length;
+  $('selPlayFps').value = String([6, 8, 12, 24].indexOf(fps) >= 0 ? fps : 12);
+  $('selExportFps').value = String([8, 12, 24, 25, 30].indexOf(fps) >= 0 ? fps : 12);
+  buildStrip();
+  applyZoom();
+  gotoFrame(0);
+  toast(frames.length + ' images extraites');
+}
+
+function releaseProject() {
+  bitmaps.clear();
+  onionCache.clear();
+  pending.clear();
+  state.frames.forEach(function (frame) { if (frame.thumb) URL.revokeObjectURL(frame.thumb); });
+  state.frames = [];
+  state.layers = [];
+  state.index = 0;
+  stage.classList.add('blank');
+  paper.style.width = '';
+  paper.style.height = '';
+  paint.style.width = '';
+  paint.style.height = '';
+  ctx.clearRect(0, 0, paint.width, paint.height);
+  $('strip').innerHTML = '';
+  $('badgeSource').textContent = 'aucune vidéo';
+  $('statSize').textContent = '—';
+  $('statFrame').textContent = '—';
+  $('statDrawn').textContent = '0';
+  updateCounters();
+}
+
+/* ------------------------------------------------------------ images */
+function requestBitmap(index) {
+  if (index < 0 || index >= state.frames.length) return Promise.resolve(null);
+  const cached = bitmaps.get(index);
+  if (cached) return Promise.resolve(cached);
+  if (pending.has(index)) return pending.get(index);
+  const job = createImageBitmap(state.frames[index].blob).then(function (bitmap) {
+    pending.delete(index);
+    bitmaps.set(index, bitmap);
+    return bitmap;
+  }).catch(function () {
+    pending.delete(index);
+    return null;
+  });
+  pending.set(index, job);
+  return job;
+}
+
+function prefetch(center) {
+  for (let offset = 1; offset <= 6; offset++) {
+    requestBitmap(center + offset);
+    requestBitmap(center - offset);
+  }
+}
+
+/* ------------------------------------------------------------ tracés */
+function renderStroke(target, stroke) {
+  const points = stroke.points;
+  if (!points.length) return;
+  target.save();
+  target.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+  target.globalAlpha = stroke.alpha;
+  target.strokeStyle = stroke.color;
+  target.fillStyle = stroke.color;
+  target.lineWidth = stroke.size;
+  target.lineCap = 'round';
+  target.lineJoin = 'round';
+
+  if (stroke.tool === 'shape') {
+    target.beginPath();
+    target.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) target.lineTo(points[i].x, points[i].y);
+    target.closePath();
+    target.fill();
+  } else if (stroke.tool === 'rect' && points.length >= 2) {
+    const first = points[0], last = points[points.length - 1];
+    target.strokeRect(Math.min(first.x, last.x), Math.min(first.y, last.y),
+      Math.abs(last.x - first.x), Math.abs(last.y - first.y));
+  } else if (stroke.tool === 'line' && points.length >= 2) {
+    const first = points[0], last = points[points.length - 1];
+    target.beginPath();
+    target.moveTo(first.x, first.y);
+    target.lineTo(last.x, last.y);
+    target.stroke();
+  } else if (points.length === 1) {
+    target.beginPath();
+    target.arc(points[0].x, points[0].y, Math.max(0.5, stroke.size * points[0].p) / 2, 0, Math.PI * 2);
+    target.fill();
+  } else {
+    for (let i = 1; i < points.length; i++) {
+      const from = points[i - 1], to = points[i];
+      target.beginPath();
+      target.lineWidth = Math.max(0.5, stroke.size * (0.35 + 0.65 * ((from.p + to.p) / 2)));
+      const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
+      if (i === 1) target.moveTo(from.x, from.y); else {
+        const prev = points[i - 2];
+        target.moveTo((prev.x + from.x) / 2, (prev.y + from.y) / 2);
+      }
+      target.quadraticCurveTo(from.x, from.y, midX, midY);
+      target.stroke();
+    }
+    const last = points[points.length - 1], before = points[points.length - 2];
+    target.beginPath();
+    target.lineWidth = Math.max(0.5, stroke.size * (0.35 + 0.65 * last.p));
+    target.moveTo((before.x + last.x) / 2, (before.y + last.y) / 2);
+    target.lineTo(last.x, last.y);
+    target.stroke();
+  }
+  target.restore();
+}
+
+function renderLayer(index, target) {
+  target.clearRect(0, 0, state.width, state.height);
+  const layer = state.layers[index];
+  if (!layer) return;
+  for (let i = 0; i < layer.strokes.length; i++) renderStroke(target, layer.strokes[i]);
+}
+
+function refreshLayer() {
+  renderLayer(state.index, layerCtx);
+}
+
+function onionLayer(index, tint) {
+  const key = index + '|' + (tint || 'raw');
+  if (onionCache.has(key)) return onionCache.get(key);
+  const layer = state.layers[index];
+  if (!layer || !layer.strokes.length) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = state.width;
+  canvas.height = state.height;
+  const target = canvas.getContext('2d');
+  renderLayer(index, target);
+  if (tint) {
+    target.globalCompositeOperation = 'source-in';
+    target.fillStyle = tint;
+    target.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  if (onionCache.size > 24) onionCache.clear();
+  onionCache.set(key, canvas);
+  return canvas;
+}
+
+function invalidate(index) {
+  const keys = [];
+  onionCache.forEach(function (value, key) {
+    if (key.indexOf(index + '|') === 0) keys.push(key);
+  });
+  keys.forEach(function (key) { onionCache.delete(key); });
+}
+
+/* ------------------------------------------------------------ rendu */
+function repaint() {
+  if (!state.frames.length) return;
+  ctx.clearRect(0, 0, state.width, state.height);
+  if ($('chkBg').checked) {
+    const bitmap = bitmaps.get(state.index);
+    if (bitmap) ctx.drawImage(bitmap, 0, 0, state.width, state.height);
+    else requestBitmap(state.index).then(function (loaded) { if (loaded && !state.playing) repaint(); });
+  }
+  if ($('chkOnion').checked && !state.playing) {
+    const before = Number($('rngBefore').value);
+    const after = Number($('rngAfter').value);
+    const baseAlpha = Number($('rngOnion').value) / 100;
+    const tinted = $('chkTint').checked;
+    for (let offset = before; offset >= 1; offset--) {
+      const canvas = onionLayer(state.index - offset, tinted ? '#ff3b6b' : null);
+      if (!canvas) continue;
+      ctx.globalAlpha = baseAlpha / offset;
+      ctx.drawImage(canvas, 0, 0);
+    }
+    for (let offset = after; offset >= 1; offset--) {
+      const canvas = onionLayer(state.index + offset, tinted ? '#36d399' : null);
+      if (!canvas) continue;
+      ctx.globalAlpha = baseAlpha / offset;
+      ctx.drawImage(canvas, 0, 0);
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.drawImage(layerCanvas, 0, 0);
+  if (state.live && state.live.tool !== 'brush' && state.live.tool !== 'eraser') {
+    renderStroke(ctx, state.live);
+  }
+}
+
+function updateCounters() {
+  const total = state.frames.length;
+  let drawn = 0;
+  for (let i = 0; i < state.layers.length; i++) if (state.layers[i].strokes.length) drawn++;
+  $('statDrawn').textContent = String(drawn);
+  $('statFrame').textContent = total ? (state.index + 1) + '/' + total : '—';
+  $('timeFrame').textContent = total ? String(state.index + 1) : '0';
+  $('timeTotal').textContent = String(total);
+  $('timeCode').textContent = total ? CORE.formatTimecode(state.frames[state.index].time) : '0:00.00';
+  $('stripInfo').textContent = total ? drawn + ' / ' + total + ' images dessinées' : '—';
+}
+
+function gotoFrame(index) {
+  if (!state.frames.length) return;
+  const total = state.frames.length;
+  let next = index;
+  if (next < 0) next = $('chkLoop').checked ? total - 1 : 0;
+  if (next >= total) next = $('chkLoop').checked ? 0 : total - 1;
+  state.index = next;
+  refreshLayer();
+  updateCounters();
+  highlightCell();
+  requestBitmap(next).then(function () { if (state.index === next) repaint(); });
+  prefetch(next);
+  repaint();
+}
+
+/* ------------------------------------------------------------ pellicule */
+function buildStrip() {
+  const strip = $('strip');
+  strip.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  state.frames.forEach(function (frame, index) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.index = String(index);
+    const image = document.createElement('img');
+    image.src = frame.thumb;
+    image.alt = 'image ' + (index + 1);
+    const number = document.createElement('div');
+    number.className = 'n';
+    number.textContent = String(index + 1);
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    cell.appendChild(image);
+    cell.appendChild(number);
+    cell.appendChild(dot);
+    cell.addEventListener('click', function () { stopPlayback(); gotoFrame(index); });
+    fragment.appendChild(cell);
+  });
+  strip.appendChild(fragment);
+  highlightCell();
+}
+
+function highlightCell() {
+  const strip = $('strip');
+  const cells = strip.children;
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    cell.classList.toggle('on', i === state.index);
+    cell.classList.toggle('has', state.layers[i] && state.layers[i].strokes.length > 0);
+  }
+  const active = cells[state.index];
+  if (active) {
+    const left = active.offsetLeft - strip.clientWidth / 2 + active.clientWidth / 2;
+    strip.scrollTo({ left: left, behavior: state.playing ? 'auto' : 'smooth' });
+  }
+}
+
+/* ------------------------------------------------------------ dessin */
+function pointerPosition(event) {
+  const rect = paint.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * (state.width / rect.width),
+    y: (event.clientY - rect.top) * (state.height / rect.height),
+    p: state.pressure && event.pointerType === 'pen' && event.pressure > 0 ? event.pressure : 0.5
+  };
+}
+
+function beginStroke(event) {
+  if (!state.frames.length || state.busy) return;
+  if (state.tool === 'move' || event.button === 1) {
+    event.preventDefault();
+    pan = { x: event.clientX, y: event.clientY, left: scroll.scrollLeft, top: scroll.scrollTop };
+    paint.setPointerCapture(event.pointerId);
+    paint.style.cursor = 'grabbing';
+    return;
+  }
+  stopPlayback();
+  paint.setPointerCapture(event.pointerId);
+  const point = pointerPosition(event);
+  state.drawing = true;
+  state.lastRaw = point;
+  state.lastPoint = point;
+  state.lastMid = point;
+  state.live = {
+    tool: state.tool,
+    color: state.color,
+    size: state.size,
+    alpha: state.alpha,
+    points: [point]
+  };
+  if (state.tool === 'brush' || state.tool === 'eraser') {
+    layerCtx.save();
+    layerCtx.globalCompositeOperation = state.tool === 'eraser' ? 'destination-out' : 'source-over';
+    layerCtx.globalAlpha = state.alpha;
+    layerCtx.fillStyle = state.color;
+    layerCtx.beginPath();
+    layerCtx.arc(point.x, point.y, Math.max(0.5, state.size * point.p) / 2, 0, Math.PI * 2);
+    layerCtx.fill();
+    layerCtx.restore();
+  }
+  repaint();
+}
+
+function extendStroke(event) {
+  if (pan) {
+    scroll.scrollLeft = pan.left - (event.clientX - pan.x);
+    scroll.scrollTop = pan.top - (event.clientY - pan.y);
+    return;
+  }
+  if (!state.drawing) return;
+  const events = event.getCoalescedEvents ? event.getCoalescedEvents() : [event];
+  for (let i = 0; i < events.length; i++) {
+    const raw = pointerPosition(events[i]);
+    const point = CORE.smoothPoint(state.lastPoint, raw, state.smooth);
+    if (state.tool === 'brush' || state.tool === 'eraser') {
+      if (CORE.distance(point, state.lastPoint) < 0.6) continue;
+      const mid = { x: (state.lastPoint.x + point.x) / 2, y: (state.lastPoint.y + point.y) / 2 };
+      layerCtx.save();
+      layerCtx.globalCompositeOperation = state.tool === 'eraser' ? 'destination-out' : 'source-over';
+      layerCtx.globalAlpha = state.alpha;
+      layerCtx.strokeStyle = state.color;
+      layerCtx.lineCap = 'round';
+      layerCtx.lineJoin = 'round';
+      layerCtx.lineWidth = Math.max(0.5, state.size * (0.35 + 0.65 * point.p));
+      layerCtx.beginPath();
+      layerCtx.moveTo(state.lastMid.x, state.lastMid.y);
+      layerCtx.quadraticCurveTo(state.lastPoint.x, state.lastPoint.y, mid.x, mid.y);
+      layerCtx.stroke();
+      layerCtx.restore();
+      state.lastMid = mid;
+      state.live.points.push(point);
+    } else if (state.tool === 'line' || state.tool === 'rect') {
+      state.live.points = [state.live.points[0], point];
+    } else {
+      if (CORE.distance(point, state.lastPoint) < 1.5) continue;
+      state.live.points.push(point);
+    }
+    state.lastPoint = point;
+    state.lastRaw = raw;
+  }
+  repaint();
+}
+
+function endStroke() {
+  if (pan) {
+    pan = null;
+    paint.style.cursor = state.tool === 'move' ? 'grab' : 'crosshair';
+    return;
+  }
+  if (!state.drawing) return;
+  state.drawing = false;
+  const stroke = state.live;
+  state.live = null;
+  if (!stroke) return;
+  const layer = state.layers[state.index];
+  const meaningful = stroke.points.length > 1 || stroke.tool === 'brush' || stroke.tool === 'eraser';
+  if (!meaningful) { refreshLayer(); repaint(); return; }
+  layer.strokes.push(stroke);
+  layer.redo.length = 0;
+  invalidate(state.index);
+  refreshLayer();
+  repaint();
+  updateCounters();
+  highlightCell();
+}
+
+function undo() {
+  const layer = state.layers[state.index];
+  if (!layer || !layer.strokes.length) return;
+  layer.redo.push(layer.strokes.pop());
+  invalidate(state.index);
+  refreshLayer();
+  repaint();
+  updateCounters();
+  highlightCell();
+}
+
+function redo() {
+  const layer = state.layers[state.index];
+  if (!layer || !layer.redo.length) return;
+  layer.strokes.push(layer.redo.pop());
+  invalidate(state.index);
+  refreshLayer();
+  repaint();
+  updateCounters();
+  highlightCell();
+}
+
+function eraseFrame() {
+  const layer = state.layers[state.index];
+  if (!layer || !layer.strokes.length) return;
+  layer.redo = layer.strokes.slice();
+  layer.strokes = [];
+  invalidate(state.index);
+  refreshLayer();
+  repaint();
+  updateCounters();
+  highlightCell();
+}
+
+function copyPrevious() {
+  if (state.index < 1) { toast('Pas d’image précédente'); return; }
+  const source = state.layers[state.index - 1];
+  if (!source.strokes.length) { toast('L’image précédente est vide'); return; }
+  const layer = state.layers[state.index];
+  layer.strokes = layer.strokes.concat(CORE.cloneStrokes(source.strokes));
+  invalidate(state.index);
+  refreshLayer();
+  repaint();
+  updateCounters();
+  highlightCell();
+  toast('Dessin précédent copié');
+}
+
+function holdForward() {
+  const count = CORE.clamp(Number($('numHold').value) || 2, 1, 48);
+  const source = state.layers[state.index];
+  if (!source || !source.strokes.length) { toast('Rien à reporter'); return; }
+  let applied = 0;
+  for (let offset = 1; offset <= count; offset++) {
+    const target = state.layers[state.index + offset];
+    if (!target) break;
+    target.strokes = CORE.cloneStrokes(source.strokes);
+    target.redo = [];
+    invalidate(state.index + offset);
+    applied++;
+  }
+  updateCounters();
+  highlightCell();
+  toast('Reporté sur ' + applied + ' image' + (applied > 1 ? 's' : ''));
+}
+
+/* ------------------------------------------------------------ lecture */
+function startPlayback() {
+  if (!state.frames.length) return;
+  state.playing = true;
+  state.playClock = performance.now();
+  $('btnPlay').textContent = '❚❚ Pause';
+  setMode('LECTURE', 'play');
+  requestAnimationFrame(playTick);
+}
+
+function stopPlayback() {
+  if (!state.playing) return;
+  state.playing = false;
+  $('btnPlay').textContent = '▶ Lecture';
+  setMode('PRÊT', '');
+  repaint();
+}
+
+function playTick(stamp) {
+  if (!state.playing) return;
+  const fps = Number($('selPlayFps').value);
+  if (stamp - state.playClock >= 1000 / fps) {
+    state.playClock = stamp;
+    const next = state.index + 1;
+    if (next >= state.frames.length && !$('chkLoop').checked) { stopPlayback(); return; }
+    gotoFrame(next);
+  }
+  requestAnimationFrame(playTick);
+}
+
+/* ------------------------------------------------------------ zoom */
+function applyZoom() {
+  if (!state.frames.length) return;
+  let scale;
+  if (state.zoom === 'fit') {
+    scale = CORE.fitScale(state.width, state.height, scroll.clientWidth - 36, scroll.clientHeight - 36);
+  } else {
+    scale = Number(state.zoom);
+  }
+  const width = Math.max(32, Math.round(state.width * scale));
+  const height = Math.max(32, Math.round(state.height * scale));
+  paper.style.width = width + 'px';
+  paper.style.height = height + 'px';
+  paint.style.width = width + 'px';
+  paint.style.height = height + 'px';
+}
+
+/* ------------------------------------------------------------ export */
+function exportRange() {
+  const total = state.frames.length;
+  const from = CORE.clamp(Number($('numFrom').value) || 1, 1, total) - 1;
+  const to = CORE.clamp(Number($('numTo').value) || total, 1, total) - 1;
+  return { from: Math.min(from, to), to: Math.max(from, to) };
+}
+
+async function composeFrame(index, scale) {
+  const width = Math.max(2, Math.round(state.width * scale));
+  const height = Math.max(2, Math.round(state.height * scale));
+  if (exportCanvas.width !== width || exportCanvas.height !== height) {
+    exportCanvas.width = width;
+    exportCanvas.height = height;
+  }
+  exportCtx.clearRect(0, 0, width, height);
+  const background = $('selBg').value;
+  if (background === 'color') {
+    exportCtx.fillStyle = $('inpBgColor').value;
+    exportCtx.fillRect(0, 0, width, height);
+  }
+  if (background === 'video') {
+    const bitmap = await requestBitmap(index);
+    if (bitmap) exportCtx.drawImage(bitmap, 0, 0, width, height);
+  }
+  renderLayer(index, onionCtx);
+  exportCtx.drawImage(onionCanvas, 0, 0, width, height);
+  return exportCanvas;
+}
+
+async function exportZip() {
+  if (!state.frames.length || state.busy) return;
+  const range = exportRange();
+  const scale = Number($('selScale').value);
+  state.busy = true;
+  state.cancel = false;
+  setMode('EXPORT', 'busy');
+  $('overlay').classList.add('show');
+  $('overlayTitle').textContent = 'Export de la séquence PNG';
+  const files = [];
+  for (let index = range.from; index <= range.to && !state.cancel; index++) {
+    await composeFrame(index, scale);
+    const blob = await toBlobAsync(exportCanvas, 'image/png');
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    files.push({ name: 'roto-' + String(index + 1).padStart(4, '0') + '.png', data: bytes });
+    const ratio = (index - range.from + 1) / (range.to - range.from + 1);
+    $('overlayMeter').style.width = (ratio * 100) + '%';
+    $('meter').style.width = (ratio * 100) + '%';
+    $('overlayText').textContent = 'Image ' + (index + 1) + ' / ' + (range.to + 1);
+  }
+  $('overlay').classList.remove('show');
+  state.busy = false;
+  setMode('PRÊT', '');
+  $('meter').style.width = '0%';
+  if (!files.length) return;
+  const blob = new Blob(ZIP.build(files), { type: 'application/zip' });
+  addFile('roto-sequence-' + Date.now() + '.zip', blob, true);
+  toast(files.length + ' PNG exportés');
+}
+
+async function exportWebm() {
+  if (!state.frames.length || state.busy) return;
+  if (!window.MediaRecorder) { toast('MediaRecorder indisponible'); return; }
+  const range = exportRange();
+  const scale = Number($('selScale').value);
+  const fps = Number($('selExportFps').value);
+  const transparent = $('selBg').value === 'none';
+  await composeFrame(range.from, scale);
+  const stream = exportCanvas.captureStream(fps);
+  const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  let mime = '';
+  for (let i = 0; i < types.length; i++) { if (MediaRecorder.isTypeSupported(types[i])) { mime = types[i]; break; } }
+  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000 } : undefined);
+  const chunks = [];
+  recorder.ondataavailable = function (event) { if (event.data && event.data.size) chunks.push(event.data); };
+  const finished = new Promise(function (resolve) { recorder.onstop = resolve; });
+
+  state.busy = true;
+  state.cancel = false;
+  setMode('EXPORT', 'busy');
+  $('overlay').classList.add('show');
+  $('overlayTitle').textContent = 'Export WebM';
+  if (transparent) $('overlayText').textContent = 'La vidéo ne gère pas la transparence : fond noir utilisé.';
+  recorder.start();
+
+  for (let index = range.from; index <= range.to && !state.cancel; index++) {
+    const started = performance.now();
+    if (transparent) {
+      exportCtx.save();
+      exportCtx.globalCompositeOperation = 'source-over';
+      exportCtx.fillStyle = '#000000';
+      exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+      exportCtx.restore();
+      renderLayer(index, onionCtx);
+      exportCtx.drawImage(onionCanvas, 0, 0, exportCanvas.width, exportCanvas.height);
+    } else {
+      await composeFrame(index, scale);
+    }
+    const ratio = (index - range.from + 1) / (range.to - range.from + 1);
+    $('overlayMeter').style.width = (ratio * 100) + '%';
+    $('meter').style.width = (ratio * 100) + '%';
+    $('overlayText').textContent = 'Image ' + (index + 1) + ' / ' + (range.to + 1);
+    const wait = 1000 / fps - (performance.now() - started);
+    if (wait > 0) await new Promise(function (resolve) { setTimeout(resolve, wait); });
+  }
+
+  recorder.stop();
+  await finished;
+  $('overlay').classList.remove('show');
+  state.busy = false;
+  setMode('PRÊT', '');
+  $('meter').style.width = '0%';
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  addFile('roto-' + Date.now() + '.webm', blob, true);
+  toast('Vidéo WebM exportée');
+}
+
+async function exportStill() {
+  if (!state.frames.length) return;
+  await composeFrame(state.index, Number($('selScale').value));
+  const blob = await toBlobAsync(exportCanvas, 'image/png');
+  addFile('roto-' + String(state.index + 1).padStart(4, '0') + '.png', blob, true);
+}
+
+/* ------------------------------------------------------------ projet */
+function saveProject() {
+  if (!state.frames.length) { toast('Rien à enregistrer'); return; }
+  const data = CORE.packProject(
+    { width: state.width, height: state.height, fps: state.fps, frames: state.frames.length },
+    state.layers
+  );
+  data.video = state.videoName;
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  addFile('roto-projet-' + Date.now() + '.json', blob, true);
+}
+
+function loadProject(file) {
+  if (!state.frames.length) { toast('Chargez d’abord la vidéo'); return; }
+  file.text().then(function (text) {
+    let data;
+    try { data = JSON.parse(text); } catch (error) { toast('JSON invalide'); return; }
+    if (!data || !data.layers) { toast('Projet illisible'); return; }
+    state.layers = CORE.unpackProject(data, state.frames.length);
+    onionCache.clear();
+    refreshLayer();
+    repaint();
+    updateCounters();
+    highlightCell();
+    toast('Projet chargé (' + Math.min(data.layers.length, state.frames.length) + ' images)');
+  });
+}
+
+/* ------------------------------------------------------------ interface */
+function buildTools() {
+  const host = $('toolHost');
+  TOOLS.forEach(function (tool) {
+    const button = document.createElement('button');
+    button.dataset.tool = tool.id;
+    button.innerHTML = '<em>' + tool.icon + '</em>' + tool.label;
+    button.title = tool.label + ' (' + tool.key.toUpperCase() + ')';
+    button.addEventListener('click', function () { selectTool(tool.id); });
+    host.appendChild(button);
+  });
+  selectTool('brush');
+}
+
+function selectTool(id) {
+  state.tool = id;
+  const buttons = $('toolHost').children;
+  for (let i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('on', buttons[i].dataset.tool === id);
+  }
+  paint.style.cursor = id === 'move' ? 'grab' : 'crosshair';
+}
+
+function buildSwatches() {
+  const host = $('swatchHost');
+  SWATCHES.forEach(function (color) {
+    const button = document.createElement('button');
+    button.style.background = color;
+    button.dataset.color = color;
+    button.title = color;
+    button.addEventListener('click', function () { setColor(color); });
+    host.appendChild(button);
+  });
+  setColor(SWATCHES[0]);
+}
+
+function setColor(color) {
+  state.color = color;
+  $('inpColor').value = color;
+  const buttons = $('swatchHost').children;
+  for (let i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('on', buttons[i].dataset.color.toLowerCase() === color.toLowerCase());
+  }
+}
+
+buildTools();
+buildSwatches();
+updateCounters();
+
+paint.addEventListener('pointerdown', beginStroke);
+paint.addEventListener('pointermove', extendStroke);
+paint.addEventListener('pointerup', endStroke);
+paint.addEventListener('pointercancel', endStroke);
+window.addEventListener('pointerup', function () { if (state.drawing || pan) endStroke(); });
+paint.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+
+$('btnOpen').addEventListener('click', function () { $('fileInput').click(); });
+$('fileInput').addEventListener('change', function (event) { loadVideo(event.target.files[0]); });
+$('btnClear').addEventListener('click', function () { stopPlayback(); releaseProject(); });
+$('btnCancel').addEventListener('click', function () { state.cancel = true; });
+
+$('btnFirst').addEventListener('click', function () { stopPlayback(); gotoFrame(0); });
+$('btnLast').addEventListener('click', function () { stopPlayback(); gotoFrame(state.frames.length - 1); });
+$('btnPrev').addEventListener('click', function () { stopPlayback(); gotoFrame(state.index - 1); });
+$('btnNext').addEventListener('click', function () { stopPlayback(); gotoFrame(state.index + 1); });
+$('btnPlay').addEventListener('click', function () { if (state.playing) stopPlayback(); else startPlayback(); });
+$('btnOnlyDrawn').addEventListener('click', function () {
+  const target = CORE.nextGap(state.layers, state.index + 1);
+  if (target < 0) toast('Toutes les images sont dessinées');
+  else { stopPlayback(); gotoFrame(target); }
+});
+
+$('btnUndo').addEventListener('click', undo);
+$('btnRedo').addEventListener('click', redo);
+$('btnErase').addEventListener('click', eraseFrame);
+$('btnCopyPrev').addEventListener('click', copyPrevious);
+$('btnHold').addEventListener('click', holdForward);
+
+$('rngSize').addEventListener('input', function () {
+  state.size = Number(this.value);
+  $('outSize').textContent = state.size + ' px';
+});
+$('rngAlpha').addEventListener('input', function () {
+  state.alpha = Number(this.value) / 100;
+  $('outAlpha').textContent = this.value + ' %';
+});
+$('rngSmooth').addEventListener('input', function () {
+  state.smooth = Number(this.value) / 100;
+  $('outSmooth').textContent = this.value + ' %';
+});
+$('inpColor').addEventListener('input', function () { setColor(this.value); });
+$('chkPressure').addEventListener('change', function () { state.pressure = this.checked; });
+
+['chkBg', 'chkOnion', 'chkTint'].forEach(function (id) {
+  $(id).addEventListener('change', repaint);
+});
+['rngBefore', 'rngAfter', 'rngOnion'].forEach(function (id) {
+  $(id).addEventListener('input', function () {
+    $('outBefore').textContent = $('rngBefore').value;
+    $('outAfter').textContent = $('rngAfter').value;
+    $('outOnion').textContent = $('rngOnion').value + ' %';
+    repaint();
+  });
+});
+$('selZoom').addEventListener('change', function () { state.zoom = this.value; applyZoom(); });
+$('selBg').addEventListener('change', function () {
+  $('exportInfo').textContent = this.value === 'none'
+    ? 'PNG : fond transparent. WebM : fond noir (pas d’alpha).'
+    : 'Le fond choisi est appliqué à l’export.';
+});
+
+$('btnZip').addEventListener('click', exportZip);
+$('btnWebm').addEventListener('click', exportWebm);
+$('btnStill').addEventListener('click', exportStill);
+$('btnSaveProject').addEventListener('click', saveProject);
+$('btnLoadProject').addEventListener('click', function () { $('projectInput').click(); });
+$('projectInput').addEventListener('change', function (event) {
+  if (event.target.files[0]) loadProject(event.target.files[0]);
+});
+
+['dragenter', 'dragover'].forEach(function (name) {
+  scroll.addEventListener(name, function (event) { event.preventDefault(); scroll.classList.add('drag'); });
+});
+['dragleave', 'drop'].forEach(function (name) {
+  scroll.addEventListener(name, function (event) { event.preventDefault(); scroll.classList.remove('drag'); });
+});
+scroll.addEventListener('drop', function (event) {
+  const file = event.dataTransfer && event.dataTransfer.files[0];
+  if (file && file.type.indexOf('video') === 0) loadVideo(file);
+  else if (file) toast('Ce n’est pas une vidéo : ' + file.type);
+});
+
+window.addEventListener('keydown', function (event) {
+  const tag = (event.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && key === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
+  if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); redo(); return; }
+  if (event.ctrlKey || event.metaKey) return;
+  if (key === 'arrowleft') { event.preventDefault(); stopPlayback(); gotoFrame(state.index - (event.shiftKey ? 10 : 1)); }
+  else if (key === 'arrowright') { event.preventDefault(); stopPlayback(); gotoFrame(state.index + (event.shiftKey ? 10 : 1)); }
+  else if (key === ' ' || event.code === 'Space') { event.preventDefault(); if (state.playing) stopPlayback(); else startPlayback(); }
+  else if (key === 'c') copyPrevious();
+  else if (key === 'x') eraseFrame();
+  else if (key === 'o') { $('chkOnion').checked = !$('chkOnion').checked; repaint(); }
+  else if (key === 'v') { $('chkBg').checked = !$('chkBg').checked; repaint(); }
+  else if (key === '[') { $('rngSize').value = String(Math.max(1, state.size - 2)); $('rngSize').dispatchEvent(new Event('input')); }
+  else if (key === ']') { $('rngSize').value = String(Math.min(120, state.size + 2)); $('rngSize').dispatchEvent(new Event('input')); }
+  else {
+    const tool = TOOLS.filter(function (item) { return item.key === key; })[0];
+    if (tool) selectTool(tool.id);
+  }
+});
+
+window.addEventListener('resize', function () { if (state.zoom === 'fit') applyZoom(); });
+window.addEventListener('beforeunload', function (event) {
+  let drawn = 0;
+  for (let i = 0; i < state.layers.length; i++) if (state.layers[i].strokes.length) drawn++;
+  if (drawn > 0) { event.preventDefault(); event.returnValue = ''; }
+});
+})();
+</script>
+</body>
+</html>

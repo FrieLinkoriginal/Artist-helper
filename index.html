@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#008080">
   <meta name="description" content="Le bureau Art Helper : neuf logiciels créatifs à ouvrir, dans un univers Windows 95 et un carrousel 3D.">
   <title>Art Helper — Bureau 95</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="music.css">
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=20261124-counter">
+  <link rel="stylesheet" href="music.css?v=20261124-counter">
+  <script src="app.js?v=20261124-counter" defer></script>
 </head>
 <body>
   <main class="desktop">
@@ -16,6 +16,9 @@
       <div class="titlebar">
         <span class="title-icon" aria-hidden="true">✿</span>
         <a class="brand" href="./">Art Helper — Bureau créatif</a>
+        <div class="daily-counter" title="Navigateurs uniques connectés aujourd'hui · un identifiant aléatoire renouvelé chaque jour">
+          <span class="counter-icon" aria-hidden="true">👥</span><span class="counter-label">VISITEURS AUJOURD'HUI</span><strong id="daily-visitor-count" aria-live="polite">—</strong>
+        </div>
         <div class="window-buttons" aria-hidden="true"><span>_</span><span>□</span><span>×</span></div>
       </div>
       <nav class="menubar" aria-label="Menu principal">
@@ -31,7 +34,7 @@
       </div>
       <div class="hero-content">
         <div class="hero-copy">
-          <div class="hero-kicker"><span class="led"></span> BUREAU CRÉATIF · 9 PROGRAMMES INSTALLÉS</div>
+          <div class="hero-kicker"><span class="led"></span> BUREAU CRÉATIF · 13 PROGRAMMES INSTALLÉS</div>
           <h1 id="hero-title">Salut, <span>créateur&nbsp;!</span></h1>
           <p>Ta boîte à outils créative façon Windows 95. Ouvre un logiciel, fais tourner le carrousel en 3D, et amuse-toi.</p>
           <a class="win-button hero-button" href="#atelier"><span aria-hidden="true">🗂️</span> Ouvrir les programmes</a>
@@ -48,7 +51,7 @@
           <span class="cube-spark spark-one">✧</span><span class="cube-spark spark-two">✦</span>
         </div>
       </div>
-      <div class="status-bar"><span>Bienvenue dans Art Helper</span><span>9 éléments</span></div>
+      <div class="status-bar"><span>Bienvenue dans Art Helper</span><span>13 éléments</span></div>
     </section>
 
     <section class="catalog win-window" id="atelier" aria-labelledby="catalog-title">
@@ -59,7 +62,7 @@
       <div class="catalog-inner">
         <div class="catalog-heading">
           <div><div class="eyebrow">LE DOSSIER DES OUTILS</div><h2 id="catalog-title">Mes logiciels <span>★</span></h2></div>
-          <div class="item-count"><strong id="tool-count">9</strong> <span id="count-label">programmes</span></div>
+          <div class="item-count"><strong id="tool-count">13</strong> <span id="count-label">programmes</span></div>
         </div>
         <div class="control-row">
           <label class="search-box"><span aria-hidden="true">🔎</span><span class="visually-hidden">Rechercher un logiciel</span><input id="search" type="search" placeholder="Rechercher un programme…" autocomplete="off"><kbd>/</kbd></label>
@@ -71,7 +74,7 @@
           <div class="tool-rail" id="tool-rail" tabindex="0" aria-label="Logiciels créatifs, carrousel 3D horizontal" aria-live="polite"></div>
           <div class="empty-state" id="empty-state" hidden><span class="empty-icon" aria-hidden="true">⚠️</span><strong>Catalogue indisponible</strong><span>Impossible de charger les logiciels pour le moment.</span></div>
         </div>
-        <div class="status-bar catalog-status"><span id="catalog-status">9 objets</span><span>HTML · prêt à lancer</span></div>
+        <div class="status-bar catalog-status"><span id="catalog-status">13 objets</span><span>HTML · prêt à lancer</span></div>
       </div>
     </section>
     <footer class="desktop-footer"><span>Art Helper 95</span><span>Fait pour créer <b>♥</b></span><span>© Bureau créatif</span></footer>

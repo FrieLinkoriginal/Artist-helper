@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🎛️ Sound Scraper — Audio Word & Lyric Sampler</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0c10;--s1:#13151c;--s2:#1a1d27;--s3:#222634;
+  --bdr:rgba(255,255,255,0.085);--bdr2:rgba(255,255,255,0.16);
+  --t1:#f4f2ed;--t2:#a5adbe;--t3:#6c7486;
+  --coral:#ff5a36;--coral-h:#ff6e4d;--coral-s:rgba(255,90,54,0.14);
+  --mint:#24e59b;--mint-h:#3af0aa;--mint-s:rgba(36,229,155,0.14);
+  --blue:#5b8cff;--amber:#f5b642;--danger:#f05252;
+  --mono:ui-monospace,'SFMono-Regular','JetBrains Mono',Menlo,Consolas,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+html,body{min-height:100%;background:radial-gradient(1200px 600px at 15% -10%,rgba(255,90,54,0.08),transparent 60%),radial-gradient(900px 500px at 85% -15%,rgba(36,229,155,0.06),transparent 60%),var(--bg);color:var(--t1);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+.app{max-width:1280px;margin:0 auto;padding:32px 24px 80px}
+
+/* HEADER */
+.header{text-align:center;margin-bottom:48px}
+.logo{display:inline-flex;align-items:center;gap:14px;margin-bottom:18px}
+.logo svg{width:52px;height:52px}
+.logo-text{font-size:1.8rem;font-weight:900;letter-spacing:0.08em}
+.logo-text span{color:var(--coral)}
+.sub{color:var(--t2);font-size:1.05rem;max-width:680px;margin:0 auto 24px}
+.badge-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.badge{font-family:var(--mono);font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--s2);border:1px solid var(--bdr)}
+.badge.coral{background:var(--coral-s);color:var(--coral);border-color:rgba(255,90,54,0.3)}
+.badge.mint{background:var(--mint-s);color:var(--mint);border-color:rgba(36,229,155,0.3)}
+.badge.blue{background:rgba(91,140,255,0.12);color:var(--blue);border-color:rgba(91,140,255,0.3)}
+
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:5px;margin:0 auto 32px;max-width:480px}
+.tab{flex:1;padding:10px 16px;border:none;background:transparent;color:var(--t2);font:600 0.88rem var(--sans);border-radius:10px;cursor:pointer;transition:all 0.15s}
+.tab:hover{color:var(--t1);background:rgba(255,255,255,0.04)}
+.tab.active{background:var(--s3);color:var(--t1);box-shadow:inset 0 0 0 1px var(--bdr2)}
+
+/* SECTIONS */
+.section{display:none}
+.section.active{display:block;animation:fadeUp 0.35s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* HERO DEMO */
+.demo-card{background:linear-gradient(180deg,rgba(26,29,39,0.92),rgba(19,21,28,0.95));border:1px solid var(--bdr);border-radius:20px;padding:32px;margin-bottom:28px}
+.demo-card h2{font-size:1.5rem;font-weight:800;margin-bottom:6px}
+.demo-card .desc{color:var(--t2);margin-bottom:20px;max-width:700px}
+
+.search-bar{display:flex;gap:10px;flex-wrap:wrap}
+.search-wrap{position:relative;flex:1;min-width:240px}
+.search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none}
+.search-wrap input,.sentence-input{width:100%;height:48px;padding:0 16px 0 44px;background:var(--bg);border:1px solid var(--bdr2);border-radius:11px;color:var(--t1);font:400 1rem var(--sans);outline:none;transition:border-color 0.15s,box-shadow 0.15s}
+.sentence-input{padding-left:16px}
+.search-wrap input:focus,.sentence-input:focus{border-color:var(--coral);box-shadow:0 0 0 3px rgba(255,90,54,0.18)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;padding:12px 22px;font:600 0.9rem var(--sans);cursor:pointer;transition:all 0.15s;white-space:nowrap}
+.btn-primary{background:var(--coral);color:#fff}
+.btn-primary:hover{background:var(--coral-h);transform:translateY(-1px)}
+.btn-mint{background:var(--mint);color:#071912;font-weight:700}
+.btn-mint:hover{background:var(--mint-h);transform:translateY(-1px)}
+.btn-ghost{background:var(--s2);border:1px solid var(--bdr);color:var(--t1)}
+.btn-ghost:hover{background:var(--s3);border-color:var(--bdr2)}
+.btn-sm{padding:7px 13px;font-size:0.8rem;border-radius:8px}
+.btn-lg{padding:14px 26px;font-size:0.96rem}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;align-items:center}
+.chips-label{font-size:0.75rem;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-right:4px}
+.chip{border:1px solid var(--bdr);background:rgba(255,255,255,0.03);color:var(--t2);border-radius:99px;padding:5px 12px;font:600 0.78rem var(--sans);cursor:pointer;transition:all 0.14s}
+.chip:hover{border-color:var(--coral);background:var(--coral-s);color:var(--t1)}
+
+/* RESULTS */
+.results-grid{display:grid;gap:12px;margin-top:20px}
+.result-card{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--s1);border:1px solid var(--bdr);border-radius:14px;cursor:pointer;transition:all 0.15s}
+.result-card:hover{background:var(--s2);border-color:var(--bdr2);transform:translateX(3px)}
+.result-cover{width:60px;height:60px;border-radius:10px;object-fit:cover;background:var(--s3);flex-shrink:0}
+.result-body{flex:1;min-width:0}
+.result-title{font-weight:700;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result-artist{font-size:0.82rem;color:var(--t2);margin-top:1px}
+.result-context{font-size:0.78rem;color:var(--t2);margin-top:4px}
+mark{background:var(--mint-s);color:var(--mint);padding:0 4px;border-radius:4px;font-weight:700}
+.ts{font-family:var(--mono);font-size:0.72rem;color:var(--mint);background:rgba(36,229,155,0.1);border:1px solid rgba(36,229,155,0.22);padding:2px 8px;border-radius:6px;flex-shrink:0}
+.lang-tag{font-family:var(--mono);font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--s3);color:var(--t2);flex-shrink:0}
+
+/* STUDIO */
+.studio{margin-top:24px;background:var(--s1);border:1px solid var(--bdr2);border-radius:18px;padding:24px;display:none}
+.studio.visible{display:block;animation:fadeUp 0.3s ease}
+.studio-header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.studio-cover{width:90px;height:90px;border-radius:12px;object-fit:cover;background:var(--s3)}
+.studio-meta h3{font-size:1.1rem;font-weight:800;margin-bottom:2px}
+.studio-meta .artist{color:var(--t2);font-size:0.9rem}
+.studio-meta .pills{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.pill{font-size:0.7rem;padding:2px 8px;border-radius:6px;background:var(--s2);border:1px solid var(--bdr);color:var(--t2)}
+
+.waveform-wrap{width:100%;height:110px;background:#0c0e14;border:1px solid var(--bdr);border-radius:10px;overflow:hidden;cursor:crosshair;margin:14px 0;position:relative}
+.waveform-wrap canvas{width:100%;height:100%;display:block}
+
+.presets{display:inline-flex;background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:2px;gap:2px;margin-bottom:10px}
+.preset{border:none;background:transparent;color:var(--t2);font:600 0.73rem var(--sans);padding:5px 10px;border-radius:6px;cursor:pointer}
+.preset.active{background:var(--s3);color:var(--mint)}
+
+.trim-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.trim-field{display:flex;flex-direction:column;gap:3px;font-size:0.7rem;color:var(--t3)}
+.trim-field input{width:80px;padding:5px 8px;background:var(--bg);border:1px solid var(--bdr2);border-radius:7px;color:var(--t1);font:400 0.8rem var(--mono)}
+.readout{font-family:var(--mono);font-size:0.75rem;color:var(--t2);margin-left:auto}
+
+.transport{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+
+.export-box{background:rgba(36,229,155,0.04);border:1px solid rgba(36,229,155,0.22);border-radius:12px;padding:16px}
+.export-box h4{font-size:0.88rem;font-weight:700;margin-bottom:10px}
+.export-btns{display:flex;gap:8px;flex-wrap:wrap}
+
+/* SENTENCE */
+.sentence-form{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.sentence-opts{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:0.83rem;color:var(--t2);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--mint);width:15px;height:15px;cursor:pointer}
+
+.stage{background:linear-gradient(135deg,#171a24,#11131a);border:1px solid var(--bdr2);border-radius:18px;padding:24px;margin-bottom:22px;box-shadow:0 20px 50px rgba(0,0,0,0.45)}
+.stage-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.stage-cover{width:100px;height:100px;border-radius:14px;object-fit:cover;background:var(--s3);border:2px solid var(--bdr2);flex-shrink:0;transition:all 0.2s}
+.stage-cover.playing{border-color:var(--mint);box-shadow:0 0 28px rgba(36,229,155,0.3)}
+.stage-info{flex:1;min-width:200px}
+.stage-kicker{font-size:0.7rem;font-weight:800;letter-spacing:0.1em;color:var(--mint);text-transform:uppercase;margin-bottom:2px}
+.stage-word{font-size:2.2rem;font-weight:900;letter-spacing:-0.02em;line-height:1.15;margin-bottom:4px}
+.stage-track{font-size:0.95rem;font-weight:600;color:var(--t2)}
+.stage-sub{font-family:var(--mono);font-size:0.76rem;color:var(--t3);margin-top:3px}
+
+.timeline{display:flex;gap:4px;min-height:38px;margin:16px 0 10px;align-items:stretch}
+.tl-seg{flex:1;min-width:32px;border-radius:7px;background:var(--s2);border:1px solid var(--bdr);padding:7px 8px;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:700;color:var(--t2);cursor:pointer;transition:all 0.12s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-seg:hover{background:var(--s3);color:var(--t1)}
+.tl-seg.active{background:var(--mint);color:#061810;border-color:var(--mint);transform:translateY(-2px);box-shadow:0 4px 16px rgba(36,229,155,0.35)}
+.tl-time{display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.75rem;color:var(--t2);margin-bottom:14px}
+
+.mix-controls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--bdr)}
+.mix-field{display:flex;flex-direction:column;gap:4px;font-size:0.78rem;color:var(--t2);min-width:180px}
+.mix-field strong{font-family:var(--mono);color:var(--t1)}
+.mix-field input[type=range]{accent-color:var(--coral);cursor:pointer}
+
+/* WORD CHAIN */
+.chain{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:13px;margin-bottom:24px}
+.word-tile{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:all 0.15s}
+.word-tile.playing{border-color:var(--mint);background:rgba(36,229,155,0.08);box-shadow:0 0 0 1px var(--mint)}
+.tile-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tile-word{display:inline-flex;align-items:center;gap:7px;font-size:1rem;font-weight:800}
+.tile-num{font-family:var(--mono);font-size:0.68rem;color:var(--t3);background:var(--s2);padding:2px 6px;border-radius:5px}
+.tile-song{display:flex;align-items:center;gap:10px}
+.tile-cover{width:48px;height:48px;border-radius:8px;object-fit:cover;background:var(--s3);flex-shrink:0}
+.tile-meta{flex:1;min-width:0}
+.tile-title{font-weight:700;font-size:0.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-artist{font-size:0.76rem;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-ts{font-family:var(--mono);font-size:0.68rem;color:var(--mint);margin-top:2px}
+.tile-actions{display:flex;gap:6px;padding-top:8px;border-top:1px solid var(--bdr)}
+.tile-actions .btn{flex:1}
+
+/* EXPORT SENTENCE */
+.sent-export{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(36,229,155,0.07),rgba(19,21,28,0.96));border:1px solid rgba(36,229,155,0.28);border-radius:18px;padding:22px 26px;margin-bottom:26px}
+.sent-export-left{flex:1;min-width:260px}
+.sent-export-left h3{font-size:1.05rem;margin-bottom:4px}
+.sent-export-left p{font-size:0.84rem;color:var(--t2)}
+.sent-export-right{display:flex;flex-direction:column;gap:8px;min-width:300px}
+
+/* CREDITS TABLE */
+.credits-wrap{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;overflow-x:auto}
+table.credits{width:100%;border-collapse:collapse;font-size:0.84rem}
+.credits th{text-align:left;padding:12px 14px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--t3);border-bottom:1px solid var(--bdr);background:var(--s2)}
+.credits td{padding:11px 14px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+.credits tr:last-child td{border-bottom:none}
+.tbl-song{display:flex;align-items:center;gap:10px}
+.tbl-cover{width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--s3);flex-shrink:0}
+
+/* FEATURES */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:32px 0}
+.feature{background:var(--s1);border:1px solid var(--bdr);border-radius:16px;padding:22px;transition:border-color 0.15s}
+.feature:hover{border-color:var(--bdr2)}
+.feature-icon{font-size:1.8rem;margin-bottom:10px}
+.feature h3{font-size:1rem;font-weight:700;margin-bottom:4px}
+.feature p{font-size:0.84rem;color:var(--t2)}
+
+/* LIBRARY STATS */
+.stats-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:24px 0}
+.stat{background:var(--s1);border:1px solid var(--bdr);border-radius:12px;padding:16px;text-align:center}
+.stat strong{display:block;font-family:var(--mono);font-size:1.5rem;color:var(--mint);margin-bottom:2px}
+.stat span{font-size:0.78rem;color:var(--t3)}
+
+/* TOAST */
+.toast-stack{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--s2);border:1px solid var(--bdr2);border-left:3px solid var(--mint);color:var(--t1);padding:11px 15px;border-radius:10px;font-size:0.84rem;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:toastIn 0.2s ease}
+.toast.error{border-left-color:var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .app{padding:20px 14px 60px}
+  .logo-text{font-size:1.3rem}
+  .demo-card{padding:20px}
+  .stage-row{gap:14px}
+  .stage-word{font-size:1.6rem}
+  .sent-export{flex-direction:column}
+}
+
+.hidden{display:none!important}
+.section-head{margin-bottom:16px}
+.section-head h2{font-size:1.15rem;font-weight:700}
+.section-head p{font-size:0.85rem;color:var(--t2);margin-top:3px}
+
+/* LIVE BANNER */
+.live-banner{margin-top:14px;padding:11px 15px;border-radius:10px;background:rgba(36,229,155,0.09);border:1px solid rgba(36,229,155,0.3);display:flex;align-items:center;gap:11px;font-size:0.84rem;color:#b7fae0}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid rgba(36,229,155,0.25);border-top-color:var(--mint);animation:spin 0.75s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.empty{text-align:center;padding:48px 20px;background:var(--s1);border:1px dashed var(--bdr2);border-radius:18px}
+.empty-icon{font-size:2.2rem;margin-bottom:8px}
+.empty h3{font-size:1.05rem;margin-bottom:4px}
+.empty p{color:var(--t2);font-size:0.88rem;max-width:480px;margin:0 auto}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <svg viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="9" fill="#1B1E27" stroke="rgba(255,255,255,0.12)"/>
+      <circle cx="18" cy="18" r="11" stroke="#FF5A36" stroke-width="1.8" stroke-dasharray="3 2" opacity="0.65"/>
+      <rect x="9" y="15" width="2.6" height="6" rx="1.3" fill="#F5F3EE"/>
+      <rect x="13.5" y="10" width="2.6" height="16" rx="1.3" fill="#FF5A36"/>
+      <rect x="18" y="7" width="2.6" height="22" rx="1.3" fill="#24E59B"/>
+      <rect x="22.5" y="11.5" width="2.6" height="13" rx="1.3" fill="#FF5A36"/>
+      <rect x="27" y="15" width="2.6" height="6" rx="1.3" fill="#F5F3EE"/>
+    </svg>
+    <div class="logo-text">SOUND <span>SCRAPER</span></div>
+  </div>
+  <p class="sub">Extracteur de mots &amp; assembleur de phrases musicales — tapez un mot ou une phrase, chaque résultat vient d'une vraie chanson avec export complet (audio + crédits).</p>
+  <div class="badge-row">
+    <span class="badge coral">117 chansons</span>
+    <span class="badge mint">6 138 mots indexés</span>
+    <span class="badge blue">FR + EN</span>
+    <span class="badge">FastAPI + Whisper</span>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" data-mode="word">🔍 Mode Mot</button>
+  <button class="tab" data-mode="sentence">🎶 Mode Phrase</button>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODE MOT -->
+<!-- ============================================================ -->
+<section class="section active" id="view-word">
+  <div class="demo-card">
+    <h2>Trouvez un mot dans de vraies chansons</h2>
+    <p class="desc">Tapez un mot en français ou en anglais : Sound Scraper localise le passage exact chanté, vous laisse écouter et ajuster l'extrait sur la forme d'onde, puis l'exporte avec toutes les infos de la musique source.</p>
+    <form class="search-bar" id="word-form">
+      <div class="search-wrap">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="word-input" placeholder="Tapez un mot (ex : soleil, amour, feu, love, fire, dream...)" autocomplete="off" spellcheck="false"/>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg">Chercher</button>
+      <button type="button" class="btn btn-lg" style="background:rgba(255,90,54,0.08);border:1px solid rgba(255,90,54,0.35);color:#ff8e74" id="btn-scrape">🌐 Scraper le web</button>
+    </form>
+    <div class="chips">
+      <span class="chips-label">Suggestions :</span>
+      <button class="chip" data-word="soleil">soleil</button>
+      <button class="chip" data-word="amour">amour</button>
+      <button class="chip" data-word="feu">feu</button>
+      <button class="chip" data-word="vie">vie</button>
+      <button class="chip" data-word="nuit">nuit</button>
+      <button class="chip" data-word="monde">monde</button>
+      <button class="chip" data-word="rêve">rêve</button>
+      <button class="chip" data-word="love">love</button>
+      <button class="chip" data-word="fire">fire</button>
+      <button class="chip" data-word="dream">dream</button>
+      <button class="chip" data-word="hello">hello</button>
+      <button class="chip" data-word="forever">forever</button>
+    </div>
+    <div class="live-banner hidden" id="word-banner">
+      <span class="spinner"></span>
+      <span id="word-banner-text">Analyse en cours...</span>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="word-results-area">
+    <div class="empty" id="word-empty">
+      <div class="empty-icon">🎛️</div>
+      <h3>Prêt à scraper votre premier mot</h3>
+      <p>Cliquez sur une suggestion ou tapez n'importe quel mot pour trouver les chansons qui le contiennent.</p>
+    </div>
+  </div>
+
+  <!-- STUDIO -->
+  <div class="studio" id="word-studio">
+    <div class="studio-header">
+      <img class="studio-cover" id="studio-cover" src="" alt=""/>
+      <div class="studio-meta">
+        <h3 id="studio-title">—</h3>
+        <div class="artist" id="studio-artist">—</div>
+        <div class="pills" id="studio-pills"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:10px;padding:10px 13px;margin-bottom:14px">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--t3);margin-bottom:3px">Passage détecté :</div>
+      <div id="studio-context" style="font-size:0.88rem">—</div>
+    </div>
+
+    <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <div class="presets">
+          <button class="preset active" data-preset="clip">Mot exact</button>
+          <button class="preset" data-preset="context">Mot + contexte</button>
+          <button class="preset" data-preset="line">Ligne chantée</button>
+        </div>
+        <span class="readout" id="studio-readout">00:00.00 → 00:00.00 (0.00s)</span>
+      </div>
+      <div class="waveform-wrap" id="waveform-wrap">
+        <canvas id="waveform-canvas" width="640" height="110"></canvas>
+      </div>
+      <div class="trim-row">
+        <label class="trim-field"><span>Début (s)</span><input type="number" id="trim-start" step="0.05" min="0" max="90"/></label>
+        <label class="trim-field"><span>Fin (s)</span><input type="number" id="trim-end" step="0.05" min="0.1" max="90"/></label>
+        <label class="toggle"><input type="checkbox" id="chk-normalize" checked/><span>Normaliser vol.</span></label>
+      </div>
+      <div class="transport">
+        <button class="btn btn-primary" id="btn-play-clip">▶ Écouter l'extrait</button>
+        <button class="btn btn-ghost btn-sm" id="btn-loop">🔁 Boucle</button>
+        <button class="btn btn-ghost btn-sm" id="btn-play-full">🎵 Aperçu 30s</button>
+      </div>
+    </div>
+
+    <div class="export-box">
+      <h4>📦 Exporter l'extrait + les infos</h4>
+      <div class="export-btns">
+        <button class="btn btn-mint" id="btn-export-zip">Pack ZIP (.mp3 + crédits)</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-mp3">MP3 seul</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-txt">Crédits .TXT</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-json">Crédits .JSON</button>
+        <button class="btn btn-ghost btn-sm" id="btn-copy">📋 Copier</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- MODE PHRASE -->
+<!-- ============================================================ -->
+<section class="section" id="view-sentence">
+  <div class="demo-card">
+    <h2>Écrivez une phrase — chaque mot vient d'une chanson différente</h2>
+    <p class="desc">Sound Scraper attribue automatiquement une musique distincte à chaque mot, enchaîne les extraits avec volume harmonisé, et exporte le montage complet avec sa fiche crédits.</p>
+    <form class="sentence-form" id="sentence-form">
+      <input class="sentence-input" type="text" id="sentence-input" placeholder="Ex : Je t'aime comme le soleil dans la nuit" autocomplete="off"/>
+      <button type="submit" class="btn btn-primary btn-lg">⚡ Assembler</button>
+    </form>
+    <div class="sentence-opts">
+      <label class="toggle"><input type="checkbox" id="opt-unique" checked/><span>1 chanson différente par mot</span></label>
+      <label class="toggle"><input type="checkbox" id="opt-scrape" checked/><span>Scraper les mots manquants</span></label>
+    </div>
+    <div class="chips">
+      <span class="chips-label">Démo :</span>
+      <button class="chip" data-sentence="Je t'aime comme le soleil dans la nuit">🇫🇷 Je t'aime comme le soleil dans la nuit</button>
+      <button class="chip" data-sentence="La vie est un rêve de feu et d'amour">🇫🇷 La vie est un rêve de feu et d'amour</button>
+      <button class="chip" data-sentence="I love the fire in the night forever">🇬🇧 I love the fire in the night forever</button>
+      <button class="chip" data-sentence="Mon amour is like the sun tonight">🌍 Mon amour is like the sun tonight</button>
+    </div>
+    <div class="live-banner hidden" id="sent-banner">
+      <span class="spinner"></span>
+      <span id="sent-banner-text">Assemblage...</span>
+    </div>
+  </div>
+
+  <div id="sentence-results-area">
+    <div class="empty" id="sent-empty">
+      <div class="empty-icon">🎶</div>
+      <h3>Assemblez une phrase musicale unique</h3>
+      <p>Essayez une phrase de démo ou écrivez la vôtre : chaque mot sera pioché dans une chanson différente !</p>
+    </div>
+  </div>
+
+  <!-- STAGE -->
+  <div class="stage hidden" id="sent-stage">
+    <div class="stage-row">
+      <img class="stage-cover" id="stage-cover" src="" alt=""/>
+      <div class="stage-info">
+        <div class="stage-kicker" id="stage-kicker">PRÊT</div>
+        <div class="stage-word" id="stage-word">« — »</div>
+        <div class="stage-track" id="stage-track">Cliquez sur « Écouter » pour lancer le montage.</div>
+        <div class="stage-sub" id="stage-sub"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-mint btn-lg" id="btn-play-all">▶ Écouter toute la phrase</button>
+        <button class="btn btn-ghost btn-sm" id="btn-shuffle-all">🔀 Tout remélanger</button>
+      </div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:12px;padding:12px 14px;margin-top:16px">
+      <div class="timeline" id="timeline-segs"></div>
+      <div class="tl-time">
+        <span id="tl-current">00:00.00</span>
+        <span id="tl-summary">0 mots · 0 chansons</span>
+      </div>
+    </div>
+    <div class="mix-controls">
+      <label class="mix-field"><span>Pause entre mots : <strong id="val-gap">55 ms</strong></span><input type="range" id="mix-gap" min="0" max="350" step="15" value="55"/></label>
+      <label class="mix-field"><span>Crossfade : <strong id="val-xfade">25 ms</strong></span><input type="range" id="mix-xfade" min="0" max="80" step="5" value="25"/></label>
+      <label class="toggle"><input type="checkbox" id="mix-norm" checked/><span>Harmoniser volume</span></label>
+    </div>
+  </div>
+
+  <!-- WORD CHAIN -->
+  <div class="hidden" id="chain-area">
+    <div class="section-head"><h2>Chaîne des mots &amp; chansons</h2><p>Cliquez ✎ pour modifier une chanson, 🔀 pour la remélanger.</p></div>
+    <div class="chain" id="word-chain"></div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="sent-export hidden" id="sent-export">
+    <div class="sent-export-left">
+      <h3>📦 Exporter la phrase + infos</h3>
+      <p>Montage audio + fiche crédits détaillée mot par mot.</p>
+    </div>
+    <div class="sent-export-right">
+      <button class="btn btn-mint btn-lg" id="btn-sent-zip">Pack ZIP complet</button>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" id="btn-sent-mp3">Audio seul</button>
+        <button class="btn btn-ghost btn-sm" id="btn-sent-txt">Crédits .TXT</button>
+        <button class="btn btn-ghost btn-sm" id="btn-sent-json">Crédits .JSON</button>
+        <button class="btn btn-ghost btn-sm" id="btn-sent-copy">📋 Copier</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREDITS TABLE -->
+  <div class="hidden" id="credits-area">
+    <div class="section-head"><h2>Infos détaillées des musiques sources</h2><p>Récapitulatif complet de la provenance de chaque mot.</p></div>
+    <div class="credits-wrap">
+      <table class="credits">
+        <thead><tr><th>#</th><th>Mot</th><th>Musique source</th><th>Album &amp; Année</th><th>Extrait</th><th>Lien</th></tr></thead>
+        <tbody id="credits-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<div class="features">
+  <div class="feature">
+    <div class="feature-icon">🔍</div>
+    <h3>Recherche intelligente FR + EN</h3>
+    <p>Transcription word-level via Faster-Whisper, normalisation des accents et élisions françaises, recherche par variantes.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">🎛️</div>
+    <h3>Éditeur de forme d'onde</h3>
+    <p>Ajustez le début/fin de chaque extrait avec 3 presets : mot exact, mot + contexte, ligne chantée complète.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">🎶</div>
+    <h3>1 chanson / mot (mode phrase)</h3>
+    <p>Contrainte d'unicité garantie par algorithme glouton : les mots rares sont assignés en premier.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📦</div>
+    <h3>Export complet (ZIP)</h3>
+    <p>MP3 320k + ID3 + pochette + crédits TXT/JSON. Mode phrase : clips individuels + montage final + fiche exhaustive.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">🌐</div>
+    <h3>Scraping live</h3>
+    <p>Recherche en direct sur iTunes (FR + US) et Deezer, avec analyse automatique et ajout à la bibliothèque.</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">📚</div>
+    <h3>Bibliothèque extensible</h3>
+    <p>Import MP3/WAV local, ajout web de chansons précises, indexation automatique des paroles.</p>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat"><strong id="s-tracks">117</strong><span>Chansons</span></div>
+  <div class="stat"><strong id="s-fr">61</strong><span>Français</span></div>
+  <div class="stat"><strong id="s-en">53</strong><span>Anglais</span></div>
+  <div class="stat"><strong id="s-words">1 546</strong><span>Mots uniques</span></div>
+  <div class="stat"><strong id="s-occ">6 138</strong><span>Occurrences</span></div>
+</div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast-stack" id="toast-stack"></div>
+
+<!-- AUDIO -->
+<audio id="audio-single" preload="auto"></audio>
+<audio id="audio-sentence" preload="auto"></audio>
+
+<script type="text/javascript">
+// ======================================================================
+// STATE
+// ======================================================================
+const S = {
+  mode:'word', lang:'all',
+  word:null, matches:[], selected:null, peaks:null, format:'mp3', loopOn:false,
+  sentence:'', items:[], timeline:[], renderId:null, audioDur:0,
+  gapMs:55, xfadeMs:25, normalize:true, uniqueSongs:true, autoScrape:true,
+  activeIdx:-1
+};
+const $ = id => document.getElementById(id);
+const qAll = (sel,r=document) => Array.from(r.querySelectorAll(sel));
+const fmt = s => { const m=Math.floor(s/60),r=s-m*60; return `${String(m).padStart(2,'0')}:${r.toFixed(2).padStart(5,'0')}`; };
+const esc = s => s==null?'':String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hl = (t,w) => { if(!t||!w) return esc(t||''); const re=new RegExp(`(${w.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')})`,'gi'); return esc(t).replace(re,'<mark>$1</mark>'); };
+const hd = u => u ? u.replace(/\/\d+x\d+bb\.jpg$/,'/600x600bb.jpg') : '';
+const toast = (m,k='info',t=3500) => { const el=document.createElement('div'); el.className=`toast ${k}`; el.textContent=m; $('toast-stack').appendChild(el); setTimeout(()=>el.remove(),t); };
+
+function api(url,opts={}){
+  return fetch(url,opts).then(async r=>{
+    if(!r.ok){const t=await r.text().catch(()=>r.statusText);throw new Error(t||r.statusText)}
+    const ct=r.headers.get('content-type')||'';
+    return ct.includes('json') ? r.json() : r;
+  });
+}
+function dlBlob(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},500)}
+
+// ======================================================================
+// TAB SWITCHING
+// ======================================================================
+qAll('.tab').forEach(b=>b.addEventListener('click',()=>{
+  S.mode=b.dataset.mode;
+  qAll('.tab').forEach(x=>x.classList.toggle('active',x===b));
+  $('view-word').classList.toggle('active',S.mode==='word');
+  $('view-sentence').classList.toggle('active',S.mode==='sentence');
+}));
+
+// ======================================================================
+// MODE MOT
+// ======================================================================
+async function searchWord(word,opts={}){
+  if(!word||!word.trim()) return;
+  word=word.trim();
+  const {scrape=false,scrapeMore=false}=opts;
+  S.word=word; S.matches=[];
+  $('word-input').value=word;
+  const banner=$('word-banner'), btxt=$('word-banner-text');
+  banner.classList.remove('hidden'); btxt.textContent=`Recherche de « ${word} »...`;
+
+  try{
+    if(!scrape&&!scrapeMore){
+      const d=await api(`/api/words/search?word=${encodeURIComponent(word)}&lang=${S.lang}&limit=30`);
+      S.matches=d.matches;
+      btxt.textContent=d.matches.length?`${d.matches.length} chansons trouvées.`:`Aucun résultat local — cliquez « Scraper le web ».`;
+      banner.classList.add('hidden');
+    } else {
+      await new Promise((res,rej)=>{
+        const src=new EventSource(`/api/words/scrape-stream?word=${encodeURIComponent(word)}&lang=${S.lang}&target_hits=${scrapeMore?1:2}&max_scan=${scrapeMore?4:6}`);
+        src.onmessage=ev=>{
+          const msg=JSON.parse(ev.data);
+          if(msg.type==='scrape_progress'||msg.type==='scanning') btxt.textContent=msg.message||msg.detail||'Scan...';
+          else if(msg.type==='added') btxt.textContent=`✓ ${msg.title} — ${msg.artist}`;
+          else if(msg.type==='complete'){S.matches=msg.matches;btxt.textContent=`Terminé — ${msg.summary?.new_hits||0} nouvelle(s) chanson(s).`;setTimeout(()=>banner.classList.add('hidden'),1600);src.close();res()}
+          else if(msg.type==='error'){throw new Error(msg.message)}
+        };
+        src.onerror=()=>{src.close();rej(new Error('Connexion interrompue'))};
+      });
+    }
+  }catch(e){toast(`Erreur : ${e.message}`,'error');banner.classList.add('hidden')}
+  renderResults();
+}
+
+function renderResults(){
+  const area=$('word-results-area'), empty=$('word-empty');
+  if(!S.matches.length){area.innerHTML='';area.appendChild(empty);empty.classList.remove('hidden');$('word-studio').classList.remove('visible');return}
+  empty.classList.add('hidden');
+  let html=`<div class="section-head"><h2>${S.matches.length} chanson${S.matches.length>1?'s':''} contenant « ${esc(S.word)} »</h2><p>Cliquez sur une chanson pour ouvrir le studio.</p></div><div class="results-grid">`;
+  S.matches.forEach((m,i)=>{
+    html+=`<div class="result-card" data-i="${i}">
+      <img class="result-cover" src="${hd(m.artwork_url)||''}" alt="" onerror="this.src=''"/>
+      <div class="result-body">
+        <div style="display:flex;align-items:center;gap:8px"><div class="result-title">${esc(m.title)}</div><span class="lang-tag">${m.language.toUpperCase()}</span></div>
+        <div class="result-artist">${esc(m.artist)}${m.album?' · '+esc(m.album):''}</div>
+        <div class="result-context">"${hl(m.context_line||'—',S.word)}"</div>
+      </div>
+      <span class="ts">${fmt(m.start_sec)}–${fmt(m.end_sec)}</span>
+    </div>`;
+  });
+  html+='</div>';
+  area.innerHTML=html;
+  qAll('.result-card').forEach(c=>c.addEventListener('click',()=>selectStudio(S.matches[+c.dataset.i])));
+  selectStudio(S.matches[0]);
+}
+
+function selectStudio(m){
+  S.selected=m;
+  $('word-studio').classList.add('visible');
+  $('studio-cover').src=hd(m.artwork_url)||'';
+  $('studio-title').textContent=m.title;
+  $('studio-artist').textContent=`${m.artist}${m.album?' — '+m.album:''}`;
+  $('studio-context').innerHTML=hl(m.context_line||'—',S.word);
+  const pills=$('studio-pills');pills.innerHTML='';
+  [m.language?.toUpperCase(),m.release_year,m.genre,m.source&&`Source: ${m.source}`].filter(Boolean).forEach(t=>{const s=document.createElement('span');s.className='pill';s.textContent=t;pills.appendChild(s)});
+  $('trim-start').value=m.clip_start.toFixed(2);
+  $('trim-end').value=m.clip_end.toFixed(2);
+  updateReadout();
+  loadWaveform(m);
+  applyPreset('clip');
+}
+
+async function loadWaveform(m){
+  try{
+    const d=await api(`/api/tracks/${m.track_id}/waveform?bars=200`);
+    S.peaks=d.peaks;
+    drawWaveform();
+  }catch(e){S.peaks=null}
+}
+
+function drawWaveform(){
+  const canvas=$('waveform-canvas'),wrap=$('waveform-wrap');
+  const rect=wrap.getBoundingClientRect();
+  const W=rect.width||640,H=rect.height||110,dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0b10');g.addColorStop(1,'#0c0e14');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(!S.peaks||!S.selected) return;
+  const m=S.selected,peaks=S.peaks,dur=m.preview_duration||30,s=m.clip_start,e=m.clip_end;
+  const barW=W/peaks.length,midY=H/2;
+  peaks.forEach((p,i)=>{
+    const t=(i/peaks.length)*dur;const inside=t>=s&&t<=e;
+    ctx.fillStyle=inside?'#24e59b':'#2a2f3d';
+    const barH=p*(H*0.8);ctx.fillRect(i*barW,midY-barH/2,Math.max(barW-0.5,0.8),barH);
+  });
+  const x1=(s/dur)*W,x2=(e/dur)*W;
+  ctx.fillStyle='rgba(255,90,54,0.9)';ctx.fillRect(x1,0,Math.max(x2-x1,20),18);
+  ctx.fillStyle='#000';ctx.font="10px monospace";ctx.textBaseline='top';
+  ctx.fillText(`${fmt(s)} → ${fmt(e)}`,x1+4,3);
+}
+
+function applyPreset(mode){
+  const m=S.selected;if(!m) return;
+  qAll('.preset').forEach(b=>b.classList.toggle('active',b.dataset.preset===mode));
+  const s=m[mode+'_start'],e=m[mode+'_end'];
+  if(s!=null&&e!=null){m.clip_start=s;m.clip_end=e;$('trim-start').value=s.toFixed(2);$('trim-end').value=e.toFixed(2);updateReadout();drawWaveform()}
+}
+
+function updateReadout(){
+  const m=S.selected;if(!m) return;
+  const s=+$('trim-start').value||m.clip_start, e=+$('trim-end').value||m.clip_end;
+  $('studio-readout').textContent=`${fmt(s)} → ${fmt(e)} (${(e-s).toFixed(2)}s)`;
+}
+
+// Waveform drag
+(function(){
+  const wrap=$('waveform-wrap');let drag=null;
+  wrap.addEventListener('mousedown',e=>{
+    const m=S.selected;if(!m||!S.peaks) return;
+    const rect=wrap.getBoundingClientRect(),x=e.clientX-rect.left,dur=m.preview_duration||30;
+    const t=(x/rect.width)*dur,xL=(m.clip_start/dur)*rect.width,xR=(m.clip_end/dur)*rect.width;
+    if(Math.abs(x-xL)<8) drag='L'; else if(Math.abs(x-xR)<8) drag='R';
+    else{const cur=m.clip_end-m.clip_start;let ns=t-cur/2,ne=t+cur/2;if(ns<0){ne-=ns;ns=0}if(ne>dur){ns-=ne-dur;ne=dur}m.clip_start=ns;m.clip_end=ne;drag='M'}
+    sync();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!drag||!S.selected) return;
+    const m=S.selected,rect=wrap.getBoundingClientRect(),x=Math.max(0,Math.min(rect.width,e.clientX-rect.left));
+    const dur=m.preview_duration||30,t=(x/rect.width)*dur;
+    if(drag==='L') m.clip_start=Math.max(0,Math.min(t,m.clip_end-0.2));
+    else if(drag==='R') m.clip_end=Math.min(dur,Math.max(t,m.clip_start+0.2));
+    else{const cur=m.clip_end-m.clip_start;let ns=t-cur/2,ne=t+cur/2;if(ns<0){ne-=ns;ns=0}if(ne>dur){ns-=ne-dur;ne=dur}m.clip_start=ns;m.clip_end=ne}
+    sync();
+  });
+  window.addEventListener('mouseup',()=>drag=null);
+  function sync(){$('trim-start').value=S.selected.clip_start.toFixed(2);$('trim-end').value=S.selected.clip_end.toFixed(2);updateReadout();drawWaveform()}
+})();
+
+// Trim inputs
+$('trim-start').addEventListener('input',()=>{if(!S.selected)return;S.selected.clip_start=Math.max(0,Math.min(+$('trim-start').value||0,S.selected.clip_end-0.2));updateReadout();drawWaveform()});
+$('trim-end').addEventListener('input',()=>{if(!S.selected)return;S.selected.clip_end=Math.min(S.selected.preview_duration||30,Math.max(+$('trim-end').value||0,S.selected.clip_start+0.2));updateReadout();drawWaveform()});
+
+// Transport
+$('btn-play-clip').addEventListener('click',()=>{if(!S.selected)return;const a=$('audio-single');a.pause();a.src=`/api/clips/play?track_id=${S.selected.track_id}&start=${S.selected.clip_start.toFixed(3)}&end=${S.selected.clip_end.toFixed(3)}`;a.play().catch(e=>toast('Erreur : '+e.message,'error'))});
+$('btn-loop').addEventListener('click',()=>{S.loopOn=!S.loopOn;$('btn-loop').style.background=S.loopOn?'var(--mint-s)':'';$('btn-loop').style.borderColor=S.loopOn?'rgba(36,229,155,0.45)':''});
+$('btn-play-full').addEventListener('click',()=>{if(!S.selected)return;const a=$('audio-single');a.pause();a.src=`/api/tracks/${S.selected.track_id}/preview`;a.play().catch(e=>toast('Erreur : '+e.message,'error'))});
+$('audio-single').addEventListener('ended',()=>{if(S.loopOn&&S.selected)$('btn-play-clip').click()});
+
+// Presets
+qAll('.preset').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
+
+// Word search
+$('word-form').addEventListener('submit',e=>{e.preventDefault();const v=$('word-input').value.trim();if(v)searchWord(v)});
+$('btn-scrape').addEventListener('click',()=>{const v=$('word-input').value.trim();if(v)searchWord(v,{scrape:true})});
+qAll('#view-word .chip').forEach(c=>c.addEventListener('click',()=>{$('word-input').value=c.dataset.word;searchWord(c.dataset.word)}));
+
+// Word export
+async function exportWord(pack){
+  const m=S.selected;if(!m) return toast('Aucune chanson sélectionnée.','error');
+  try{
+    const r=await fetch('/api/export/word',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:S.word,track_id:m.track_id,start_sec:m.clip_start,end_sec:m.clip_end,context_line:m.context_line||'',format:S.format,pack,normalize:true})});
+    if(!r.ok) throw new Error(await r.text());
+    const ct=r.headers.get('content-type')||'';
+    const slug=`soundscraper_${S.word}_${m.artist}`.replace(/[^a-zA-Z0-9_\-.]/g,'_');
+    if(ct.includes('zip')){const b=await r.blob();dlBlob(b,slug+'.zip');toast('ZIP téléchargé !')}
+    else if(ct.includes('json')){const d=await r.json();dlBlob(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),slug+'_credits.json')}
+    else if(ct.includes('text')){const t=await r.text();dlBlob(new Blob([t],{type:'text/plain'}),slug+'_credits.txt')}
+    else{const b=await r.blob();dlBlob(b,slug+'.'+S.format)}
+  }catch(e){toast('Erreur : '+e.message,'error')}
+}
+$('btn-export-zip').addEventListener('click',()=>exportWord('zip'));
+$('btn-export-mp3').addEventListener('click',()=>exportWord('audio'));
+$('btn-export-txt').addEventListener('click',()=>exportWord('txt'));
+$('btn-export-json').addEventListener('click',()=>exportWord('json'));
+$('btn-copy').addEventListener('click',async()=>{const m=S.selected;if(!m)return;const t=`Mot : ${S.word}\nChanson : ${m.title}\nArtiste : ${m.artist}\nAlbum : ${m.album||'-'}\nAnnée : ${m.release_year||'-'}\nGenre : ${m.genre||'-'}\nSource : ${m.source||'-'}\nExtrait : ${fmt(m.clip_start)} → ${fmt(m.clip_end)}`;await navigator.clipboard.writeText(t);toast('Infos copiées !','info',2000)});
+
+// ======================================================================
+// MODE PHRASE
+// ======================================================================
+async function buildSentence(sentence,force=false){
+  if(!sentence||!sentence.trim()) return;
+  sentence=sentence.trim();
+  if(S.sentence===sentence&&!force&&S.items.length) return;
+  S.sentence=sentence;S.items=[];S.timeline=[];S.activeIdx=-1;
+  const banner=$('sent-banner'),btxt=$('sent-banner-text');
+  banner.classList.remove('hidden');btxt.textContent='Analyse de la phrase...';
+  try{
+    await new Promise((res,rej)=>{
+      const src=new EventSource(`/api/sentence/build-stream?sentence=${encodeURIComponent(sentence)}&lang=${S.lang}&unique_songs=${S.uniqueSongs}&auto_scrape=${S.autoScrape}`);
+      src.onmessage=ev=>{
+        const msg=JSON.parse(ev.data);
+        if(msg.type==='parsed') btxt.textContent=msg.message||`${msg.tokens.length} mots détectés.`;
+        else if(msg.type==='scraping_word') btxt.textContent=msg.message;
+        else if(msg.type==='scrape_progress') btxt.textContent=`[${msg.word}] ${msg.detail}`;
+        else if(msg.type==='complete'){S.items=msg.items;btxt.textContent=`✓ ${msg.found_count}/${msg.total_words} mots (${msg.unique_songs_count} chansons uniques).`;setTimeout(()=>banner.classList.add('hidden'),2200);src.close();res()}
+        else if(msg.type==='error') throw new Error(msg.message);
+      };
+      src.onerror=()=>{src.close();rej(new Error('Connexion interrompue'))};
+    });
+  }catch(e){toast('Erreur : '+e.message,'error');banner.classList.add('hidden')}
+  renderSentence();
+}
+
+function renderSentence(){
+  if(!S.items||!S.items.length){$('sent-stage').classList.add('hidden');$('chain-area').classList.add('hidden');$('sent-export').classList.add('hidden');$('credits-area').classList.add('hidden');$('sent-empty').classList.remove('hidden');return}
+  $('sent-empty').classList.add('hidden');
+  const found=S.items.filter(i=>i.found);
+  const uids=new Set(found.map(i=>i.selected.track_id));
+  $('tl-summary').textContent=`${found.length}/${S.items.length} mots · ${uids.size} chanson${uids.size>1?'s':''}`;
+
+  // Timeline segments
+  const tlc=$('timeline-segs');tlc.innerHTML='';
+  S.items.forEach((it,idx)=>{const s=document.createElement('div');s.className='tl-seg'+(it.found?'':' missing');s.textContent=it.word;s.addEventListener('click',()=>scrollTile(idx));tlc.appendChild(s)});
+
+  // Word chain
+  renderChain();
+  renderCredits();
+
+  // Show panels
+  $('sent-stage').classList.remove('hidden');
+  $('chain-area').classList.remove('hidden');
+  $('sent-export').classList.remove('hidden');
+  $('credits-area').classList.remove('hidden');
+
+  // Auto-render audio
+  renderAudio();
+}
+
+async function renderAudio(){
+  const found=S.items.filter(i=>i.found);
+  if(!found.length){S.timeline=[];return}
+  const clips=found.map(i=>({word:i.word,track_id:i.selected.track_id,start_sec:i.selected.clip_start,end_sec:i.selected.clip_end,context_line:i.selected.context_line}));
+  try{
+    const d=await api('/api/sentence/render',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clips,gap_ms:S.gapMs,crossfade_ms:S.xfadeMs,normalize:S.normalize})});
+    S.renderId=d.render_id;S.timeline=d.timeline;S.audioDur=d.total_duration||0;
+    $('audio-sentence').src=`/api/renders/${d.render_id}.mp3`;
+  }catch(e){toast('Erreur assemblage : '+e.message,'error')}
+}
+
+function renderChain(){
+  const grid=$('word-chain');grid.innerHTML='';
+  S.items.forEach((item,idx)=>{
+    const tile=document.createElement('div');tile.className='word-tile';tile.dataset.idx=idx;
+    if(!item.found){tile.innerHTML=`<div class="tile-head"><div class="tile-word"><span class="tile-num">#${String(idx+1).padStart(2,'0')}</span><span>« ${esc(item.word)} »</span></div><span class="lang-tag" style="background:var(--amber);color:#000">INTR.</span></div><div style="font-size:0.78rem;color:var(--amber)">Mot non trouvé.</div>`}
+    else{
+      const sel=item.selected;
+      tile.innerHTML=`<div class="tile-head"><div class="tile-word"><span class="tile-num">#${String(idx+1).padStart(2,'0')}</span><span>« ${esc(item.word)} »</span></div><span class="lang-tag">${sel.language.toUpperCase()}</span></div>
+      <div class="tile-song"><img class="tile-cover" src="${hd(sel.artwork_url)||''}" alt="" onerror="this.src=''"/>
+      <div class="tile-meta"><div class="tile-title">${esc(sel.title)}</div><div class="tile-artist">${esc(sel.artist)}</div><div class="tile-ts">${fmt(sel.clip_start)} → ${fmt(sel.clip_end)}</div></div></div>
+      <div class="tile-actions"><button class="btn btn-sm btn-primary" data-a="play">▶</button><button class="btn btn-sm btn-ghost" data-a="shuffle">🔀</button></div>`;
+      tile.querySelector('[data-a="play"]').addEventListener('click',e=>{e.stopPropagation();const a=$('audio-single');a.pause();a.src=`/api/clips/play?track_id=${sel.track_id}&start=${sel.clip_start.toFixed(3)}&end=${sel.clip_end.toFixed(3)}`;a.play()});
+      tile.querySelector('[data-a="shuffle"]').addEventListener('click',async e=>{e.stopPropagation();await shuffleWord(idx)});
+    }
+    grid.appendChild(tile);
+  });
+}
+
+async function shuffleWord(idx){
+  const item=S.items[idx];if(!item) return;
+  const used=new Set(S.items.map((i,j)=>j!==idx&&i.found&&i.selected?.track_id).filter(Boolean));
+  let alts=(item.alternatives||[]).filter(a=>!used.has(a.track_id));
+  if(!alts.length){try{await new Promise((res,rej)=>{const src=new EventSource(`/api/words/scrape-stream?word=${encodeURIComponent(item.word)}&lang=${S.lang}&target_hits=2&max_scan=4`);src.onmessage=ev=>{const msg=JSON.parse(ev.data);if(msg.type==='complete'){alts=msg.matches.filter(a=>!used.has(a.track_id));item.alternatives=msg.matches;src.close();res()}else if(msg.type==='error') throw new Error(msg.message)};src.onerror=()=>{src.close();rej()}})}catch(e){toast('Scraping échoué','error');return}}
+  if(!alts.length){toast(`Pas d'autre chanson pour « ${item.word} »`,'error');return}
+  item.selected=alts[Math.floor(Math.random()*Math.min(alts.length,6))];
+  await renderAudio();renderChain();renderCredits();toast(`« ${item.word} » → ${item.selected.title}`,'info',2200);
+}
+
+function scrollTile(idx){const t=qAll('.word-tile')[idx];if(t) t.scrollIntoView({behavior:'smooth',block:'center'})}
+
+function renderCredits(){
+  const tb=$('credits-tbody');tb.innerHTML='';
+  S.items.forEach((item,idx)=>{
+    const tr=document.createElement('tr');
+    if(!item.found){tr.innerHTML=`<td>${idx+1}</td><td><strong>${esc(item.word)}</strong></td><td colspan="4" style="color:var(--amber)">Aucune source</td>`}
+    else{const sel=item.selected;tr.innerHTML=`<td>${idx+1}</td><td><strong>${esc(item.word)}</strong></td><td><div class="tbl-song"><img class="tbl-cover" src="${hd(sel.artwork_url)||''}" alt="" onerror="this.src=''" /><div><div>${esc(sel.title)}</div><div style="font-size:0.76rem;color:var(--t2)">${esc(sel.artist)}</div></div></div></td><td style="font-size:0.82rem;color:var(--t2)">${esc(sel.album||'—')}${sel.release_year?' · '+sel.release_year:''}</td><td style="font-family:var(--mono);font-size:0.78rem">${fmt(sel.clip_start)} → ${fmt(sel.clip_end)}</td><td>${sel.source_url?`<a href="${sel.source_url}" target="_blank" style="color:var(--blue);font-size:0.82rem">↗</a>`:'—'}</td>`}
+    tb.appendChild(tr);
+  });
+}
+
+// Sentence player
+function playSentence(){
+  const a=$('audio-sentence');
+  if(!S.renderId){toast('Phrase pas encore rendue.','error');return}
+  if(!a.paused){a.pause();$('btn-play-all').textContent='▶ Écouter toute la phrase';$('stage-cover').classList.remove('playing');return}
+  a.play().catch(e=>toast('Erreur : '+e.message,'error'));
+}
+(function(){
+  const a=$('audio-sentence');
+  a.addEventListener('play',()=>{$('btn-play-all').textContent='⏸ Pause';$('stage-cover').classList.add('playing')});
+  a.addEventListener('pause',()=>{$('btn-play-all').textContent='▶ Écouter toute la phrase';$('stage-cover').classList.remove('playing')});
+  a.addEventListener('ended',()=>{$('btn-play-all').textContent='▶ Écouter toute la phrase';$('stage-cover').classList.remove('playing');hlWord(-1)});
+  a.addEventListener('timeupdate',()=>{
+    const t=a.currentTime;$('tl-current').textContent=fmt(t);
+    let ai=-1;for(let i=0;i<S.timeline.length;i++){if(t>=S.timeline[i].start_sec&&t<=S.timeline[i].end_sec){ai=i;break}}
+    if(ai!==S.activeIdx){S.activeIdx=ai;hlWord(ai)}
+  });
+})();
+
+function hlWord(idx){
+  const segs=qAll('.tl-seg'),tiles=qAll('.word-tile');
+  segs.forEach((s,i)=>s.classList.toggle('active',i===idx));
+  tiles.forEach((t,i)=>t.classList.toggle('playing',i===idx));
+  if(idx<0||!S.items[idx]||!S.items[idx].found){$('stage-kicker').textContent='LECTURE';$('stage-word').textContent='« — »';$('stage-track').textContent='...';$('stage-sub').textContent='';return}
+  const it=S.items[idx],sel=it.selected,tl=S.timeline[idx];
+  $('stage-kicker').textContent=`LECTURE MOT #${idx+1}`;
+  $('stage-word').textContent=`« ${it.word} »`;
+  $('stage-track').textContent=`${sel.title} — ${sel.artist}`;
+  $('stage-sub').textContent=`${fmt(tl.start_sec)} → ${fmt(tl.end_sec)} · ${esc(sel.album||'')}${sel.release_year?' ('+sel.release_year+')':''}`;
+  $('stage-cover').src=hd(sel.artwork_url)||'';
+  renderCredits();
+}
+
+// Sentence controls
+$('btn-play-all').addEventListener('click',playSentence);
+$('btn-shuffle-all').addEventListener('click',async()=>{await buildSentence(S.sentence,true)});
+$('sentence-form').addEventListener('submit',e=>{e.preventDefault();const v=$('sentence-input').value.trim();if(v) buildSentence(v)});
+qAll('#view-sentence .chip').forEach(c=>c.addEventListener('click',()=>{$('sentence-input').value=c.dataset.sentence;buildSentence(c.dataset.sentence)}));
+$('opt-unique').addEventListener('change',e=>{S.uniqueSongs=e.target.checked});
+$('opt-scrape').addEventListener('change',e=>{S.autoScrape=e.target.checked});
+$('mix-gap').addEventListener('input',e=>{S.gapMs=+e.target.value;$('val-gap').textContent=S.gapMs+' ms'});
+$('mix-xfade').addEventListener('input',e=>{S.xfadeMs=+e.target.value;$('val-xfade').textContent=S.xfadeMs+' ms'});
+$('mix-norm').addEventListener('change',e=>{S.normalize=e.target.checked});
+const rerender=()=>{if(S.items.length) renderAudio()};
+$('mix-gap').addEventListener('change',debounce(rerender,200));
+$('mix-xfade').addEventListener('change',debounce(rerender,200));
+$('mix-norm').addEventListener('change',rerender);
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+
+// Sentence export
+async function exportSent(pack){
+  if(!S.items.length) return toast('Aucune phrase.','error');
+  const found=S.items.filter(i=>i.found);if(!found.length) return toast('Aucun mot trouvé.','error');
+  const clips=found.map(i=>({word:i.word,track_id:i.selected.track_id,start_sec:i.selected.clip_start,end_sec:i.selected.clip_end,context_line:i.selected.context_line}));
+  try{
+    const r=await fetch('/api/export/sentence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sentence:S.sentence,clips,format:'mp3',pack,gap_ms:S.gapMs,crossfade_ms:S.xfadeMs,normalize:S.normalize,include_individual:true})});
+    if(!r.ok) throw new Error(await r.text());
+    const ct=r.headers.get('content-type')||'';const slug=S.sentence.replace(/[^a-zA-Z0-9]+/g,'_').slice(0,40);
+    if(ct.includes('zip')){const b=await r.blob();dlBlob(b,`soundscraper_phrase_${slug}.zip`);toast('ZIP téléchargé !')}
+    else if(ct.includes('json')){const d=await r.json();dlBlob(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),`phrase_${slug}_credits.json`)}
+    else if(ct.includes('text')){const t=await r.text();dlBlob(new Blob([t],{type:'text/plain'}),`phrase_${slug}_credits.txt`)}
+    else{const b=await r.blob();dlBlob(b,`phrase_${slug}.mp3`)}
+  }catch(e){toast('Erreur : '+e.message,'error')}
+}
+$('btn-sent-zip').addEventListener('click',()=>exportSent('zip'));
+$('btn-sent-mp3').addEventListener('click',()=>exportSent('audio'));
+$('btn-sent-txt').addEventListener('click',()=>exportSent('txt'));
+$('btn-sent-json').addEventListener('click',()=>exportSent('json'));
+$('btn-sent-copy').addEventListener('click',async()=>{
+  const found=S.items.filter(i=>i.found);if(!found.length) return;
+  const lines=[`Phrase : ${S.sentence}`,''];
+  found.forEach((it,idx)=>{const s=it.selected;lines.push(`#${idx+1} « ${it.word} » → ${s.title} (${s.artist})`);lines.push(`   ${fmt(s.clip_start)} → ${fmt(s.clip_end)} — ${s.album||'-'} ${s.release_year||''}`);lines.push('')});
+  await navigator.clipboard.writeText(lines.join('\n'));toast('Crédits copiés !','info',2000);
+});
+
+// Resize
+window.addEventListener('resize',debounce(()=>{if(S.selected) drawWaveform()},150));
+
+// Init
+toast('🎛️ Bienvenue dans Sound Scraper !','info',4000);
+</script>
+</body>
+</html>
