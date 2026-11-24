@@ -449,7 +449,7 @@ document.addEventListener('keydown', event => {
   }
 });
 
-fetch('./apps.json')
+fetch('./apps.json?v=20261124-18', { cache: 'no-store' })
   .then(response => {
     if (!response.ok) throw new Error(`apps.json: ${response.status}`);
     return response.json();
