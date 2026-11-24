@@ -1,6 +1,6 @@
 # Art Helper — Bureau 95
 
-Un bureau créatif inspiré de Windows 95, avec une roue de logiciels en perspective 3D. Les visiteurs ouvrent les programmes préinstallés depuis le carrousel ou le menu Démarrer : il n'y a pas de fonction pour ajouter, téléverser ou configurer ses propres sites.
+Un bureau créatif inspiré de Windows 95, avec une roue de logiciels
 
 ## Logiciels intégrés
 
