@@ -88,5 +88,45 @@
     "url": "./apps/orbit-3d/index.html",
     "type": "HTML · 3D",
     "color": "#c2d9ff"
+  },
+  {
+    "id": "puppet-studio",
+    "title": "PUPPET.studio",
+    "description": "Découpe une image en morceaux, articule une marionnette et exporte son animation.",
+    "category": "Dessin & animation",
+    "emoji": "🪆",
+    "url": "./apps/puppet-studio/index.html",
+    "type": "HTML",
+    "color": "#f1c2a1"
+  },
+  {
+    "id": "sound-scraper",
+    "title": "Sound Scraper",
+    "description": "Cherche des mots dans des chansons et assemble des extraits. La recherche complète attend son serveur API.",
+    "category": "Son & musique",
+    "emoji": "🎛️",
+    "url": "./apps/sound-scraper/index.html",
+    "type": "HTML · API",
+    "color": "#b5d4d1"
+  },
+  {
+    "id": "flora",
+    "title": "Flora — laboratoire de couleurs",
+    "description": "Explore les harmonies chromatiques et compose une palette de couleurs vivante.",
+    "category": "Couleurs",
+    "emoji": "🌼",
+    "url": "./apps/flora/index.html",
+    "type": "HTML",
+    "color": "#d7e6b7"
+  },
+  {
+    "id": "roto-studio",
+    "title": "ROTO.studio",
+    "description": "Fais de la rotoscopie image par image directement dans ton navigateur.",
+    "category": "Dessin & animation",
+    "emoji": "🎞️",
+    "url": "./apps/roto-studio/index.html",
+    "type": "HTML",
+    "color": "#c8d8f0"
   }
 ]
