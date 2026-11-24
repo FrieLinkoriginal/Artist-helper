@@ -347,11 +347,37 @@ function openMusicPlayer() {
   document.querySelector('#task-sound').setAttribute('aria-expanded', 'true');
 }
 function closeMusicPlayer() {
+  // Hiding the player does not stop playback; use Stop or Pause explicitly.
   musicWindow.hidden = true;
   document.querySelector('#open-sound').setAttribute('aria-expanded', 'false');
   document.querySelector('#task-sound').setAttribute('aria-expanded', 'false');
-  musicAudio.pause();
 }
+const playerTitlebar = musicWindow.querySelector('.music-titlebar');
+let playerDrag = null;
+playerTitlebar.addEventListener('pointerdown', event => {
+  if (event.target.closest('button') || event.button !== 0) return;
+  const bounds = musicWindow.getBoundingClientRect();
+  musicWindow.style.left = `${bounds.left}px`;
+  musicWindow.style.top = `${bounds.top}px`;
+  musicWindow.style.transform = 'none';
+  playerDrag = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  playerTitlebar.classList.add('is-dragging');
+  playerTitlebar.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+playerTitlebar.addEventListener('pointermove', event => {
+  if (!playerDrag) return;
+  const left = Math.max(80 - musicWindow.offsetWidth, Math.min(window.innerWidth - 80, event.clientX - playerDrag.x));
+  const top = Math.max(0, Math.min(window.innerHeight - 55, event.clientY - playerDrag.y));
+  musicWindow.style.left = `${left}px`;
+  musicWindow.style.top = `${top}px`;
+});
+function stopMovingPlayer() {
+  playerDrag = null;
+  playerTitlebar.classList.remove('is-dragging');
+}
+playerTitlebar.addEventListener('pointerup', stopMovingPlayer);
+playerTitlebar.addEventListener('pointercancel', stopMovingPlayer);
 document.querySelector('#open-sound').addEventListener('click', openMusicPlayer);
 document.querySelector('#task-sound').addEventListener('click', openMusicPlayer);
 document.querySelector('#close-sound').addEventListener('click', closeMusicPlayer);
@@ -385,12 +411,16 @@ musicAudio.addEventListener('play', () => {
   playButton.textContent = '❚❚';
   playButton.setAttribute('aria-label', 'Mettre en pause');
   document.querySelector('.equalizer').classList.add('is-playing');
+  document.querySelector('#task-sound').classList.add('is-playing');
+  document.querySelector('#task-sound').setAttribute('aria-label', `Ouvrir le lecteur MP3 — lecture : ${tracks[currentTrack].title}`);
   musicStatus.textContent = `Lecture : ${tracks[currentTrack].title}`;
 });
 musicAudio.addEventListener('pause', () => {
   playButton.textContent = '▶';
   playButton.setAttribute('aria-label', 'Lire');
   document.querySelector('.equalizer').classList.remove('is-playing');
+  document.querySelector('#task-sound').classList.remove('is-playing');
+  document.querySelector('#task-sound').setAttribute('aria-label', 'Ouvrir le lecteur MP3');
 });
 musicAudio.addEventListener('ended', () => selectTrack(currentTrack + 1, true));
 renderPlaylist();

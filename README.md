@@ -14,7 +14,7 @@ Un bureau créatif inspiré de Windows 95, avec une roue de logiciels en perspec
 - Paper Free
 - Orbit — Studio de texte 3D (depuis Google Drive)
 
-Chaque programme est embarqué comme page HTML dans `apps/`. La fenêtre entière d'un programme, ainsi que son bouton « Lancer », l'ouvre. Un lecteur MP3 rétro est aussi accessible depuis le menu « Sons » et la barre des tâches. Il lit et permet de télécharger les 18 morceaux copiés du dossier Google Drive « Dossier sans titre » ; leurs titres dans le lecteur sont des noms fantaisie.
+Chaque programme est embarqué comme page HTML dans `apps/`. La fenêtre entière d'un programme, ainsi que son bouton « Lancer », l'ouvre. Un lecteur MP3 rétro est aussi accessible depuis le menu « Sons » et la barre des tâches. Il lit et permet de télécharger les 18 morceaux copiés du dossier Google Drive « Dossier sans titre » ; leurs titres dans le lecteur sont des noms fantaisie. La fenêtre du lecteur se déplace en faisant glisser sa barre de titre, et fermer la fenêtre ne coupe pas la musique : utilise Pause ou Stop pour l'arrêter.
 
 Certains logiciels peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
 
