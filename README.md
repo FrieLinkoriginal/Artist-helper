@@ -20,6 +20,8 @@ Un bureau créatif inspiré de Windows 95, avec une roue de logiciels en perspec
 
 Chaque programme est embarqué comme page HTML dans `apps/`. La fenêtre entière d'un programme, ainsi que son bouton « Lancer », l'ouvre. Un lecteur MP3 rétro est aussi accessible depuis le menu « Sons » et la barre des tâches. Il lit et permet de télécharger les 18 morceaux copiés du dossier Google Drive « Dossier sans titre » ; leurs titres dans le lecteur sont des noms fantaisie. La fenêtre du lecteur se déplace en faisant glisser sa barre de titre, et fermer la fenêtre ne coupe pas la musique : utilise Pause ou Stop pour l'arrêter.
 
+Le compteur en haut à droite affiche les navigateurs uniques du jour (UTC), partagé entre tous les visiteurs via Supabase. Il conserve un identifiant aléatoire uniquement pour la journée en cours.
+
 Sound Scraper est livré avec son interface HTML ; ses fonctions de recherche et d'export complètes nécessitent aussi son serveur Python/API, qui n'est pas hébergé par GitHub Pages. Certains logiciels peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
 
 ## Publier avec GitHub Pages

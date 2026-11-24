@@ -41,6 +41,8 @@ let currentTrack = 0;
 let dragStart = null;
 let suppressCardClickUntil = 0;
 const favoriteKey = 'art-helper-favorites';
+const dailyCounterUrl = 'https://xjktoqdcycjpfzgmukdl.supabase.co/rest/v1/rpc/art_helper_record_daily_visit';
+const dailyCounterKey = 'sb_publishable_7QNqXgJj69h7jst2J8TbHg_0XCbCOLd';
 const colors = ['#f7d967', '#b8d9f2', '#f0c6c6', '#d9e6be', '#f4c99f', '#d7c8e7'];
 
 function loadFavorites() {
@@ -56,6 +58,60 @@ const favoriteIds = new Set(loadFavorites());
 function saveFavorites() {
   try { window.localStorage.setItem(favoriteKey, JSON.stringify([...favoriteIds])); } catch { /* Storage can be disabled; favorites still work for this page view. */ }
 }
+
+function createVisitorId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  if (window.crypto?.getRandomValues) {
+    const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+    return [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
+
+function dailyVisitorId() {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `art-helper-visitor-${day}`;
+  try {
+    let id = window.localStorage.getItem(key);
+    if (!id) {
+      id = createVisitorId();
+      window.localStorage.setItem(key, id);
+    }
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const oldKey = window.localStorage.key(i);
+      if (oldKey?.startsWith('art-helper-visitor-') && oldKey !== key) window.localStorage.removeItem(oldKey);
+    }
+    return id;
+  } catch {
+    return createVisitorId();
+  }
+}
+
+async function updateDailyVisitors() {
+  const counter = document.querySelector('#daily-visitor-count');
+  try {
+    const response = await fetch(dailyCounterUrl, {
+      method: 'POST',
+      headers: {
+        apikey: dailyCounterKey,
+        Authorization: `Bearer ${dailyCounterKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_visitor_id: dailyVisitorId() }),
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`Counter API returned ${response.status}`);
+    const count = await response.json();
+    if (!Number.isFinite(Number(count))) throw new Error('Invalid daily visitor count');
+    counter.textContent = new Intl.NumberFormat('fr-FR').format(Number(count));
+    counter.parentElement.title = 'Nombre de navigateurs uniques connectés aujourd’hui. Un identifiant aléatoire est renouvelé chaque jour.';
+  } catch (error) {
+    console.warn('Daily visitor count unavailable:', error);
+    counter.textContent = '—';
+    counter.parentElement.title = 'Compteur journalier momentanément indisponible.';
+  }
+}
+updateDailyVisitors();
 
 function safeText(value, fallback = '') {
   return typeof value === 'string' ? value : fallback;
@@ -449,7 +505,7 @@ document.addEventListener('keydown', event => {
   }
 });
 
-fetch('./apps.json?v=20261124-18', { cache: 'no-store' })
+fetch('./apps.json?v=20261124-counter', { cache: 'no-store' })
   .then(response => {
     if (!response.ok) throw new Error(`apps.json: ${response.status}`);
     return response.json();
