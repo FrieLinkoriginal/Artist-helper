@@ -95,7 +95,7 @@
     "description": "Découpe une image en morceaux, articule une marionnette et exporte son animation.",
     "category": "Dessin & animation",
     "emoji": "🪆",
-    "url": "./apps/puppet-studio/index.html",
+    "url": "./apps/puppet-studio/index.html?v=2",
     "type": "HTML",
     "color": "#f1c2a1"
   },

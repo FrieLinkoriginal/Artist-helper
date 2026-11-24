@@ -115,6 +115,18 @@ label.check input{accent-color:var(--acc)}
 .help ul{margin:0;padding:0}
 .help li{margin-bottom:4px;list-style:none;display:flex;gap:6px;align-items:baseline;font-size:11px}
 .help li span.d{color:var(--dim)}
+.menu{position:fixed;z-index:80;min-width:228px;max-width:280px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 20px 44px #000b;display:none}
+.menu.show{display:block}
+.menu h4{margin:0 0 5px;padding:4px 7px 7px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu .info{display:flex;justify-content:space-between;gap:10px;padding:2px 7px;font-size:11px;color:var(--dim)}
+.menu .info b{color:var(--txt);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu hr{border:0;border-top:1px solid var(--line);margin:5px 0}
+.menu button{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;padding:5px 7px;font-size:11.5px;color:var(--txt)}
+.menu button:hover{background:#1c1c29;color:#fff;border:0}
+.menu button.danger{color:var(--bad)}
+.menu button.off{color:var(--dim)}
+.menu .sub{display:flex;gap:4px;padding:2px 3px}
+.menu .sub button{text-align:center;border:1px solid var(--line)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#15151f;border:1px solid var(--acc2);color:var(--txt);padding:9px 16px;border-radius:8px;font-size:12px;opacity:0;pointer-events:none;transition:.22s;z-index:60}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
 .overlay{position:fixed;inset:0;background:#05050ad9;display:none;align-items:center;justify-content:center;z-index:70;backdrop-filter:blur(3px)}
@@ -283,6 +295,14 @@ label.check input{accent-color:var(--acc)}
             <input type="range" id="rngBend" min="0" max="100" step="1" value="30">
           </div>
           <div class="ctrl">
+            <div class="lab"><span>Texture</span><span id="outTex">auto</span></div>
+            <select id="selTexture"></select>
+          </div>
+          <div class="ctrl">
+            <div class="lab"><span>Grain de la texture</span><span id="outTexMix">35 %</span></div>
+            <input type="range" id="rngTexMix" min="0" max="100" step="1" value="35">
+          </div>
+          <div class="ctrl">
             <div class="lab"><span>Profondeur Z</span><span id="outZ">0</span></div>
             <input type="range" id="rngZ" min="-50" max="50" step="1" value="0">
           </div>
@@ -398,6 +418,7 @@ label.check input{accent-color:var(--acc)}
           <li><span class="kbd">R</span> <span class="d">enregistrer la prise</span></li>
           <li><span class="kbd">Entrée</span> <span class="d">valider la découpe · <span class="kbd">Échap</span> annuler</span></li>
           <li><span class="kbd">Suppr</span> <span class="d">supprimer le morceau</span></li>
+          <li><span class="kbd">clic droit</span> <span class="d">fiche du morceau : réglages, retrait d’outils</span></li>
           <li><span class="kbd">molette</span> <span class="d">zoom · clic du milieu : déplacer</span></li>
         </ul>
       </div>
@@ -405,6 +426,7 @@ label.check input{accent-color:var(--acc)}
   </aside>
 </main>
 
+<div class="menu" id="menu"></div>
 <div class="toast" id="toast"></div>
 <div class="overlay" id="overlay">
   <div class="card">
@@ -415,7 +437,7 @@ label.check input{accent-color:var(--acc)}
   </div>
 </div>
 
-<script type="text/javascript">
+<script>
 /* === PUPPET_CORE_START === moteur pur, testable hors navigateur */
 const MATERIALS = {
   tissu:  { label: 'Tissu',  mass: 0.6, stiffness: 1.6,  damping: 3.2, bend: 70,  slices: 14, profile: 'wave' },
@@ -512,6 +534,47 @@ const PHYS = (function () {
     return true;
   }
 
+  function ropeLocal(part) {
+    return (part.rope && part.rope.local) ? part.rope.local : { x: 0, y: 0 };
+  }
+
+  function ropeTie(part) {
+    const local = ropeLocal(part);
+    return localToWorld(part, local.x, local.y);
+  }
+
+  function applyRopeAt(part, anchorX, anchorY, length) {
+    const tie = ropeTie(part);
+    const dx = tie.x - anchorX, dy = tie.y - anchorY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= length || distance === 0) return false;
+    const nx = dx / distance, ny = dy / distance;
+    const overshoot = distance - length;
+    part.x -= nx * overshoot;
+    part.y -= ny * overshoot;
+    const radial = part.vx * nx + part.vy * ny;
+    if (radial > 0) { part.vx -= radial * nx; part.vy -= radial * ny; }
+    return true;
+  }
+
+  function applyRopeJoint(part, pivotX, pivotY) {
+    if (!part.rope) return false;
+    let tie = ropeTie(part);
+    const armX = tie.x - pivotX, armY = tie.y - pivotY;
+    if (armX * armX + armY * armY < 16) tie = localToWorld(part, part.com.x, part.com.y);
+    const dx = tie.x - part.rope.x, dy = tie.y - part.rope.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= part.rope.length || distance === 0) return false;
+    const targetX = part.rope.x + dx / distance * part.rope.length;
+    const targetY = part.rope.y + dy / distance * part.rope.length;
+    const current = Math.atan2(tie.y - pivotY, tie.x - pivotX);
+    const wanted = Math.atan2(targetY - pivotY, targetX - pivotX);
+    const delta = normalizeAngle(wanted - current);
+    part.localAngle += delta;
+    part.angVel *= 0.25;
+    return true;
+  }
+
   function pendulum(part, pivotX, pivotY, gravity, wind, dt, pivotAcc, flow) {
     const com = localToWorld(part, part.com.x, part.com.y);
     const rx = com.x - pivotX, ry = com.y - pivotY;
@@ -557,9 +620,8 @@ const PHYS = (function () {
         part.vx /= drag; part.vy /= drag;
         part.x += part.vx * dt;
         part.y += part.vy * dt;
-        if (part.link === 'rope') {
-          const anchor = anchorWorld(part, byId);
-          applyRope(part, anchor.x, anchor.y, part.rope ? part.rope.length : 100);
+        if (part.rope) {
+          applyRopeAt(part, part.rope.x, part.rope.y, part.rope.length);
           const before = { x: part.localAngle, y: 0 };
           part.localAngle = part.angle;
           pendulum(part, part.x, part.y, gravity, wind, dt, null, 0);
@@ -590,6 +652,9 @@ const PHYS = (function () {
       part.angle = parent.angle + part.localAngle;
       pendulum(part, pivot.x, pivot.y, gravity, wind, dt, pivotAcc, flow);
       part.angle = parent.angle + part.localAngle;
+      if (part.rope && applyRopeJoint(part, pivot.x, pivot.y)) {
+        part.angle = parent.angle + part.localAngle;
+      }
     }
     return order;
   }
@@ -633,10 +698,7 @@ const PHYS = (function () {
           joint.y += (targetY - grab.y) * weight;
           joint.vx = (targetX - grab.x) * weight * 8;
           joint.vy = (targetY - grab.y) * weight * 8;
-          if (joint.link === 'rope' && joint.rope) {
-            const anchor = anchorWorld(joint, byId);
-            applyRope(joint, anchor.x, anchor.y, joint.rope.length);
-          }
+          if (joint.rope) applyRopeAt(joint, joint.rope.x, joint.rope.y, joint.rope.length);
           updateTree(parts, byId);
         }
       }
@@ -673,6 +735,9 @@ const PHYS = (function () {
     updateWorld: updateWorld,
     updateTree: updateTree,
     applyRope: applyRope,
+    applyRopeAt: applyRopeAt,
+    applyRopeJoint: applyRopeJoint,
+    ropeTie: ropeTie,
     step: step,
     dragChain: dragChain,
     sliceProfile: sliceProfile
@@ -1044,7 +1109,7 @@ const ZIP = (function () {
 /* === PUPPET_CORE_END === */
 </script>
 
-<script type="text/javascript">
+<script>
 (function () {
 "use strict";
 
@@ -1060,7 +1125,7 @@ const TOOLS = [
   { id: 'pivot',  label: 'Pivot',     icon: '🎯', key: 'p', tip: 'Cliquez le point de rotation du morceau.' },
   { id: 'joint',  label: 'Joint',     icon: '🔗', key: 'j', tip: 'Cliquez l’enfant, puis le point d’accroche sur le parent.' },
   { id: 'nail',   label: 'Clou',      icon: '📌', key: 'n', tip: 'Cliquez un morceau : il est figé, la gravité ne l’atteint plus.' },
-  { id: 'rope',   label: 'Ficelle',   icon: '🧵', key: 'f', tip: 'Cliquez le morceau, puis le point d’attache : la chute est bloquée, pas le balancement.' },
+  { id: 'rope',   label: 'Ficelle',   icon: '🧵', key: 'f', tip: 'Cliquez où nouer la ficelle sur le morceau, puis son point d’attache. Fonctionne aussi sur un membre articulé.' },
   { id: 'cam',    label: 'Caméra',    icon: '🎥', key: 'c', tip: 'Glissez pour déplacer la vue, molette pour zoomer.' }
 ];
 
@@ -1371,6 +1436,8 @@ function createPart(points, name) {
     rope: null,
     com: { x: state.ox + state.w / 2, y: state.oy + state.h / 2 },
     limit: { on: false, min: -Math.PI / 3, max: Math.PI / 3 },
+    texture: 'auto',
+    textureMix: 35,
     held: false,
     visible: true,
     phase: Math.random() * Math.PI * 2
@@ -1436,6 +1503,7 @@ function cutPart(part, polygonWorld, keepInside) {
   target.fill();
   target.restore();
   state.mask = readMask(state.canvas);
+  state.baked = null;
 }
 
 function trimPart(part) {
@@ -1466,6 +1534,7 @@ function trimPart(part) {
   state.imgX += minX;
   state.imgY += minY;
   state.mask = readMask(next);
+  state.baked = null;
   if (part.active === part.states.indexOf(state)) part.com = { x: state.ox + width / 2, y: state.oy + height / 2 };
   return true;
 }
@@ -1501,6 +1570,7 @@ function splitPart(part, from, to) {
     link: 'free', parentId: null, anchor: { x: 0, y: 0 }, rope: null,
     com: { x: clone.ox + clone.w / 2, y: clone.oy + clone.h / 2 },
     limit: { on: false, min: -Math.PI / 3, max: Math.PI / 3 },
+    texture: part.texture || 'auto', textureMix: part.textureMix == null ? 35 : part.textureMix,
     held: false, visible: true, phase: Math.random() * Math.PI * 2
   };
   applyMaterial(piece, part.material);
@@ -1545,6 +1615,11 @@ function refreshParts() {
     item.appendChild(depth);
     item.appendChild(eye);
     item.addEventListener('click', function () { select(part); });
+    item.addEventListener('contextmenu', function (event) {
+      event.preventDefault();
+      select(part);
+      openMenu(event.clientX, event.clientY, part, { x: part.x, y: part.y });
+    });
     host.appendChild(item);
   });
   $('statParts').textContent = String(scene.parts.length);
@@ -1559,13 +1634,18 @@ function refreshPartPanel() {
   if (!part) return;
   $('inpName').value = part.name;
   $('selLink').value = part.link;
-  $('outLink').textContent = part.parentId ? 'sur ' + (scene.parts.filter(function (p) { return p.id === part.parentId; })[0] || {}).name : 'libre';
+  $('outLink').textContent = (part.parentId ? 'sur ' + (scene.parts.filter(function (p) { return p.id === part.parentId; })[0] || {}).name : 'libre') +
+    (part.rope ? ' + ficelle' : '');
   $('selMaterial').value = part.material;
   $('outMat').textContent = (MATERIALS[part.material] || {}).label || '';
   $('rngMass').value = part.mass; $('outMass').textContent = part.mass.toFixed(1);
   $('rngStiff').value = part.stiffness; $('outStiff').textContent = part.stiffness.toFixed(1);
   $('rngDamp').value = part.damping; $('outDamp').textContent = part.damping.toFixed(1);
   $('rngBend').value = part.bend; $('outBend').textContent = Math.round(part.bend) + ' %';
+  $('selTexture').value = part.texture || 'auto';
+  $('outTex').textContent = textureLabel(part);
+  const mix = part.textureMix == null ? 35 : part.textureMix;
+  $('rngTexMix').value = mix; $('outTexMix').textContent = Math.round(mix) + ' %';
   $('rngZ').value = part.z; $('outZ').textContent = String(part.z);
   $('chkLimit').checked = part.limit.on;
   $('numMin').value = Math.round(part.limit.min * 180 / Math.PI);
@@ -1703,6 +1783,120 @@ function fitCamera() {
   syncCameraUI();
 }
 
+/* ------------------------------------------------------------- textures */
+const TEXTURES = {
+  tissu:  { label: 'Tissu tissé',   blend: 'overlay' },
+  papier: { label: 'Papier froissé', blend: 'overlay' },
+  peau:   { label: 'Peau / grain',  blend: 'soft-light' },
+  bois:   { label: 'Bois veiné',    blend: 'overlay' },
+  metal:  { label: 'Métal brossé',  blend: 'overlay' },
+  gelee:  { label: 'Gelée',         blend: 'soft-light' },
+  toile:  { label: 'Toile rugueuse', blend: 'overlay' },
+  carton: { label: 'Carton',        blend: 'overlay' }
+};
+const textureCache = {};
+
+function noise(seed) {
+  let state = seed >>> 0;
+  return function () {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function buildTexture(kind) {
+  const size = 128;
+  const tau = Math.PI * 2 / size;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const paint = canvas.getContext('2d');
+  const image = paint.createImageData(size, size);
+  const data = image.data;
+  const random = noise(kind.length * 9176 + 1337);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const p = (y * size + x) * 4;
+      let value = 128;
+      if (kind === 'tissu') {
+        value = 128 + (x % 4 < 2 ? 13 : -13) * (y % 8 < 4 ? 1 : -1)
+                    + (y % 4 < 2 ? -11 : 11) * (x % 8 < 4 ? 1 : -1)
+                    + (random() - 0.5) * 12;
+      } else if (kind === 'toile') {
+        value = 128 + (x % 8 < 4 ? 18 : -18) * (y % 16 < 8 ? 1 : -1)
+                    + (y % 8 < 4 ? -16 : 16) * (x % 16 < 8 ? 1 : -1)
+                    + (random() - 0.5) * 22;
+      } else if (kind === 'papier') {
+        value = 128 + (random() - 0.5) * 24 + Math.sin(x * tau * 3 + Math.sin(y * tau) * 3) * 6
+                    + Math.sin((x + y) * tau * 2) * 3;
+      } else if (kind === 'carton') {
+        value = 128 + Math.sin(y * tau * 16) * 9 + (random() - 0.5) * 30
+                    + Math.sin(x * tau * 2) * 4;
+      } else if (kind === 'peau') {
+        value = 128 + (random() - 0.5) * 9 + Math.sin(x * tau * 16) * Math.sin(y * tau * 16) * 4
+                    + Math.sin((x + y) * tau * 2) * 5;
+      } else if (kind === 'bois') {
+        value = 128 + Math.sin((x + Math.sin(y * tau * 2) * 11) * tau * 6) * 17 + (random() - 0.5) * 9;
+      } else if (kind === 'metal') {
+        value = 128 + (random() - 0.5) * 7 + Math.sin(y * tau * 24) * 4 + (x % 16 === 0 ? 11 : 0)
+                    + Math.sin(x * tau) * 7;
+      } else if (kind === 'gelee') {
+        value = 128 + Math.sin(x * tau * 2) * Math.cos(y * tau * 3) * 20 + (random() - 0.5) * 5;
+      }
+      const level = value < 0 ? 0 : (value > 255 ? 255 : value);
+      data[p] = level; data[p + 1] = level; data[p + 2] = level; data[p + 3] = 255;
+    }
+  }
+  paint.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function textureKind(part) {
+  const choice = part.texture || 'auto';
+  if (choice === 'none') return null;
+  const kind = choice === 'auto' ? part.material : choice;
+  return TEXTURES[kind] ? kind : null;
+}
+
+function textureLabel(part) {
+  const choice = part.texture || 'auto';
+  if (choice === 'none') return 'aucune';
+  const kind = textureKind(part);
+  if (!kind) return 'aucune';
+  return (TEXTURES[kind].label) + (choice === 'auto' ? ' (auto)' : '');
+}
+
+function invalidateTexture(part) {
+  part.states.forEach(function (state) { state.baked = null; });
+}
+
+function bakedArt(part, state) {
+  const kind = textureKind(part);
+  const mix = part.textureMix == null ? 35 : part.textureMix;
+  if (!kind || mix <= 0) return state.canvas;
+  const key = kind + '|' + Math.round(mix) + '|' + state.w + 'x' + state.h;
+  if (state.baked && state.bakedKey === key) return state.baked;
+  if (!textureCache[kind]) textureCache[kind] = buildTexture(kind);
+  const baked = document.createElement('canvas');
+  baked.width = state.w;
+  baked.height = state.h;
+  const paint = baked.getContext('2d');
+  paint.drawImage(state.canvas, 0, 0);
+  const pattern = paint.createPattern(textureCache[kind], 'repeat');
+  if (pattern) {
+    paint.globalCompositeOperation = TEXTURES[kind].blend;
+    paint.globalAlpha = mix / 100;
+    paint.fillStyle = pattern;
+    paint.fillRect(0, 0, state.w, state.h);
+    paint.globalAlpha = 1;
+    paint.globalCompositeOperation = 'destination-in';
+    paint.drawImage(state.canvas, 0, 0);
+  }
+  state.baked = baked;
+  state.bakedKey = key;
+  return baked;
+}
+
 /* ------------------------------------------------------------- rendu */
 function pixelRatio() { return Math.min(2, window.devicePixelRatio || 1); }
 
@@ -1734,8 +1928,9 @@ function drawPart(target, part) {
   const slices = part.slices || [];
   const shear = PHYS.clamp(part.angVel * 0.1, -1.6, 1.6) * bend;
   const sway = (Math.abs(part.vx) > 1 ? PHYS.clamp(part.vx / 900, -1, 1) : 0) * bend;
+  const art = bakedArt(part, state);
   if (slices.length < 2 || (Math.abs(shear) < 0.004 && Math.abs(sway) < 0.004)) {
-    target.drawImage(state.canvas, state.ox, state.oy);
+    target.drawImage(art, state.ox, state.oy);
   } else {
     const count = slices.length;
     const band = state.h / count;
@@ -1746,7 +1941,7 @@ function drawPart(target, part) {
       const weight = slices[i].weight;
       const wobble = Math.sin(app.clock * 3.4 + part.phase + slices[i].t * 4.2) * weight * bend * 1.8;
       const shift = (shear + sway) * weight * state.h * 0.2 + wobble;
-      target.drawImage(state.canvas, 0, sy, state.w, sh, state.ox + shift, state.oy + sy, state.w, sh);
+      target.drawImage(art, 0, sy, state.w, sh, state.ox + shift, state.oy + sy, state.w, sh);
     }
   }
   target.restore();
@@ -1777,19 +1972,25 @@ function drawRig(target) {
       target.beginPath();
       target.arc(anchor.x, anchor.y, 4 * unit, 0, Math.PI * 2);
       target.fill();
-    } else if (part.link === 'rope' && part.rope) {
+    }
+    if (part.rope && part.link !== 'nail') {
+      const tie = PHYS.ropeTie(part);
       target.setLineDash([6 * unit, 5 * unit]);
       target.strokeStyle = 'rgba(167,139,250,.85)';
       target.beginPath();
       target.moveTo(part.rope.x, part.rope.y);
-      target.lineTo(part.x, part.y);
+      target.lineTo(tie.x, tie.y);
       target.stroke();
       target.setLineDash([]);
       target.fillStyle = '#a78bfa';
       target.beginPath();
       target.arc(part.rope.x, part.rope.y, 3.5 * unit, 0, Math.PI * 2);
       target.fill();
-    } else if (part.link === 'nail') {
+      target.beginPath();
+      target.arc(tie.x, tie.y, 2.6 * unit, 0, Math.PI * 2);
+      target.fill();
+    }
+    if (part.link === 'nail') {
       target.setLineDash([]);
       target.strokeStyle = '#ffd166';
       target.beginPath();
@@ -2092,15 +2293,38 @@ function toggleNail(part) {
   refreshPartPanel();
 }
 
-function attachRope(part, wx, wy) {
-  const length = Math.max(10, Math.hypot(part.x - wx, part.y - wy));
-  part.parentId = null;
-  part.link = 'rope';
-  part.rope = { x: wx, y: wy, length: length };
+function attachRope(part, wx, wy, tieLocal) {
+  const local = tieLocal || { x: 0, y: 0 };
+  const tie = PHYS.localToWorld(part, local.x, local.y);
+  const length = Math.max(10, Math.hypot(tie.x - wx, tie.y - wy));
+  part.rope = { x: wx, y: wy, length: length, local: { x: local.x, y: local.y } };
+  if (part.link === 'free') part.link = 'rope';
   part.vx = 0; part.vy = 0;
   refreshParts();
   refreshPartPanel();
-  toast('Ficelle posée · longueur ' + Math.round(length) + ' px');
+  toast(part.link === 'joint'
+    ? 'Ficelle sur le joint · ' + Math.round(length) + ' px : la chute est retenue, le balancement reste libre'
+    : 'Ficelle posée · longueur ' + Math.round(length) + ' px');
+}
+
+function removeRope(part) {
+  if (!part || !part.rope) return;
+  part.rope = null;
+  if (part.link === 'rope') part.link = part.parentId != null ? 'joint' : 'free';
+  refreshParts();
+  refreshPartPanel();
+  toast('Ficelle retirée');
+}
+
+function detachJoint(part) {
+  if (!part || part.parentId == null) return;
+  part.parentId = null;
+  part.anchor = { x: 0, y: 0 };
+  if (part.link === 'joint') part.link = part.rope ? 'rope' : 'free';
+  part.vx = 0; part.vy = 0; part.angVel = 0;
+  refreshParts();
+  refreshPartPanel();
+  toast('Joint retiré');
 }
 
 function setLink(part, value) {
@@ -2170,6 +2394,133 @@ function addStateFromDraw(target, worldPoints) {
   refreshStates();
   refreshParts();
   toast('État « ' + state.name + ' » prélevé sur ' + source.name);
+}
+
+/* ------------------------------------------------------------- fiche du morceau */
+function partInfo(part) {
+  const byId = PHYS.indexParts(scene.parts);
+  const parent = part.parentId == null ? null : byId.get(part.parentId);
+  const state = currentState(part);
+  const children = scene.parts.filter(function (other) { return other.parentId === part.id; });
+  const rows = [];
+  rows.push({ label: 'Attache', value: part.link === 'joint' ? 'joint sur ' + (parent ? parent.name : '?')
+    : part.link === 'nail' ? 'clou (figé)' : part.link === 'rope' ? 'libre + ficelle' : 'libre (tombe)' });
+  rows.push({ label: 'Ficelle', value: part.rope ? Math.round(part.rope.length) + ' px' : 'aucune' });
+  rows.push({ label: 'Matière', value: (MATERIALS[part.material] || {}).label || part.material });
+  rows.push({ label: 'Texture', value: textureLabel(part) + (textureKind(part) ? ' · ' + Math.round(part.textureMix == null ? 35 : part.textureMix) + ' %' : '') });
+  rows.push({ label: 'Angle', value: Math.round(part.localAngle * 180 / Math.PI) + '°' +
+    (part.limit.on ? ' (bridé ' + Math.round(part.limit.min * 180 / Math.PI) + '…' + Math.round(part.limit.max * 180 / Math.PI) + ')' : '') });
+  rows.push({ label: 'Profondeur', value: 'z ' + part.z });
+  rows.push({ label: 'États', value: part.states.length + ' · ' + state.name });
+  rows.push({ label: 'Taille', value: state.w + ' × ' + state.h + ' px' });
+  rows.push({ label: 'Enfants', value: children.length ? children.map(function (c) { return c.name; }).join(', ') : 'aucun' });
+  return rows;
+}
+
+function closeMenu() {
+  $('menu').classList.remove('show');
+  app.menuPart = null;
+}
+
+function menuButton(host, label, action, className) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  if (className) button.className = className;
+  button.addEventListener('click', function () { closeMenu(); action(); });
+  host.appendChild(button);
+  return button;
+}
+
+function openMenu(clientX, clientY, part, world) {
+  const host = $('menu');
+  host.innerHTML = '';
+  app.menuPart = part || null;
+  const title = document.createElement('h4');
+  title.textContent = part ? part.name : 'Scène';
+  host.appendChild(title);
+
+  if (part) {
+    partInfo(part).forEach(function (row) {
+      const line = document.createElement('div');
+      line.className = 'info';
+      const label = document.createElement('span');
+      label.textContent = row.label;
+      const value = document.createElement('b');
+      value.textContent = row.value;
+      value.title = row.value;
+      line.appendChild(label);
+      line.appendChild(value);
+      host.appendChild(line);
+    });
+    host.appendChild(document.createElement('hr'));
+
+    menuButton(host, '🎯 Pivot ici', function () { setPivot(part, world.x, world.y); toast('Pivot déplacé'); });
+    if (part.rope) {
+      menuButton(host, '🧵 Retirer la ficelle', function () { removeRope(part); });
+      menuButton(host, '🧵 Renouer la ficelle ici', function () {
+        attachRope(part, part.rope.x, part.rope.y, PHYS.worldToLocal(part, world.x, world.y));
+      });
+    } else {
+      menuButton(host, '🧵 Accrocher une ficelle ici', function () {
+        const local = PHYS.worldToLocal(part, world.x, world.y);
+        attachRope(part, world.x, world.y - 140, local);
+      });
+    }
+    if (part.link === 'nail') menuButton(host, '📌 Retirer le clou', function () { toggleNail(part); });
+    else menuButton(host, '📌 Planter un clou', function () { toggleNail(part); });
+    if (part.parentId != null) menuButton(host, '🔗 Retirer le joint', function () { detachJoint(part); });
+    else menuButton(host, '🔗 Relier à un parent (J)', function () { setTool('joint'); app.pending = part; select(part); toast('Cliquez le point d’accroche sur le parent'); });
+    menuButton(host, (part.limit.on ? '✔ ' : '○ ') + 'Limiter l’angle', function () {
+      part.limit.on = !part.limit.on;
+      refreshPartPanel();
+      toast(part.limit.on ? 'Angle limité' : 'Limite retirée');
+    }, part.limit.on ? '' : 'off');
+    menuButton(host, '⟲ Pose de repos ici', function () {
+      part.rest = part.localAngle;
+      part.home = { x: part.x, y: part.y, angle: part.angle, localAngle: part.localAngle };
+      toast('Pose de repos mémorisée');
+    });
+
+    if (part.states.length > 1) {
+      host.appendChild(document.createElement('hr'));
+      const row = document.createElement('div');
+      row.className = 'sub';
+      part.states.forEach(function (state, index) {
+        menuButton(row, String(index + 1), function () { part.active = index; refreshStates(); refreshParts(); },
+          part.active === index ? '' : 'off');
+      });
+      host.appendChild(row);
+    }
+
+    host.appendChild(document.createElement('hr'));
+    const depth = document.createElement('div');
+    depth.className = 'sub';
+    menuButton(depth, 'Z ▲', function () { part.z = Math.min(50, part.z + 1); refreshParts(); refreshPartPanel(); });
+    menuButton(depth, 'Z ▼', function () { part.z = Math.max(-50, part.z - 1); refreshParts(); refreshPartPanel(); });
+    menuButton(depth, 'Devant', function () {
+      part.z = Math.min(50, Math.max.apply(null, scene.parts.map(function (other) { return other.z; })) + 1);
+      refreshParts(); refreshPartPanel();
+    });
+    menuButton(depth, 'Derrière', function () {
+      part.z = Math.max(-50, Math.min.apply(null, scene.parts.map(function (other) { return other.z; })) - 1);
+      refreshParts(); refreshPartPanel();
+    });
+    host.appendChild(depth);
+    menuButton(host, '✕ Supprimer le morceau', function () { deletePart(part); }, 'danger');
+  } else {
+    menuButton(host, '＋ Poser une copie de l’image (A)', function () { addImageCopy(app.active); });
+    menuButton(host, '⛶ Cadrer la vue', fitCamera);
+    menuButton(host, '⟲ Pose de repos', restPose);
+    menuButton(host, '○ Tout désélectionner', function () { select(null); });
+  }
+
+  host.classList.add('show');
+  const box = host.getBoundingClientRect();
+  const left = Math.min(clientX + 2, window.innerWidth - box.width - 8);
+  const top = Math.min(clientY + 2, window.innerHeight - box.height - 8);
+  host.style.left = Math.max(6, left) + 'px';
+  host.style.top = Math.max(6, top) + 'px';
 }
 
 /* ------------------------------------------------------------- tracé */
@@ -2307,12 +2658,14 @@ function onPointerDown(event) {
       const hit = pickPart(world.x, world.y);
       if (!hit) { toast('Cliquez le morceau à suspendre'); return; }
       app.pending = hit;
+      app.pendingLocal = PHYS.worldToLocal(hit, world.x, world.y);
       select(hit);
-      toast('Cliquez le point d’attache de la ficelle');
+      toast('Nœud posé · cliquez maintenant son point d’attache');
       return;
     }
-    attachRope(app.pending, world.x, world.y);
+    attachRope(app.pending, world.x, world.y, app.pendingLocal);
     app.pending = null;
+    app.pendingLocal = null;
   }
 }
 
@@ -2422,6 +2775,10 @@ function bindControls() {
   bindPartRange('rngStiff', 'outStiff', function (v) { return v.toFixed(1); }, function (part, v) { part.stiffness = v; });
   bindPartRange('rngDamp', 'outDamp', function (v) { return v.toFixed(1); }, function (part, v) { part.damping = v; });
   bindPartRange('rngBend', 'outBend', percent, function (part, v) { part.bend = v; });
+  bindPartRange('rngTexMix', 'outTexMix', percent, function (part, v) {
+    part.textureMix = v;
+    $('outTex').textContent = textureLabel(part);
+  });
   bindPartRange('rngZ', 'outZ', function (v) { return String(Math.round(v)); }, function (part, v) { part.z = Math.round(v); refreshParts(); });
 
   bindRange('rngZoom', 'outZoom', percent, function (v) { app.camera.zoom = PHYS.clamp(v / 100, 0.1, 8); });
@@ -2433,8 +2790,16 @@ function bindControls() {
   $('selMaterial').addEventListener('change', function () {
     if (!app.selected) return;
     applyMaterial(app.selected, this.value);
+    invalidateTexture(app.selected);
     refreshPartPanel();
     toast('Matière : ' + (MATERIALS[this.value] || {}).label);
+  });
+  $('selTexture').addEventListener('change', function () {
+    if (!app.selected) return;
+    app.selected.texture = this.value;
+    invalidateTexture(app.selected);
+    refreshPartPanel();
+    toast('Texture : ' + textureLabel(app.selected));
   });
   $('inpName').addEventListener('input', function () {
     if (!app.selected) return;
@@ -2849,6 +3214,7 @@ function serialize() {
         z: part.z, link: part.link, parentId: part.parentId,
         anchor: part.anchor, rope: part.rope, com: part.com, limit: part.limit,
         material: part.material, mass: part.mass, stiffness: part.stiffness, damping: part.damping, bend: part.bend,
+        texture: part.texture || 'auto', textureMix: part.textureMix == null ? 35 : part.textureMix,
         visible: part.visible, home: part.home || null,
         states: part.states.map(function (state) {
           return {
@@ -2922,6 +3288,7 @@ async function deserialize(data) {
       anchor: saved.anchor, rope: saved.rope, com: saved.com, limit: saved.limit,
       material: saved.material, mass: saved.mass, stiffness: saved.stiffness, damping: saved.damping,
       bend: saved.bend, slices: PHYS.sliceProfile(saved.material, (MATERIALS[saved.material] || MATERIALS.peau).slices),
+      texture: saved.texture || 'auto', textureMix: saved.textureMix == null ? 35 : saved.textureMix,
       held: false, visible: saved.visible !== false, phase: Math.random() * Math.PI * 2,
       home: saved.home || null
     };
@@ -2958,7 +3325,7 @@ function onKeyDown(event) {
   if (isTyping(event.target)) return;
   const key = event.key.toLowerCase();
   if (key === 'enter') { validateDraft(); event.preventDefault(); return; }
-  if (key === 'escape') { cancelDraft(); return; }
+  if (key === 'escape') { closeMenu(); cancelDraft(); return; }
   if (key === ' ') { setSimulating(!app.simulating); event.preventDefault(); return; }
   if (key === 'r') { setRecording(!app.recording); return; }
   if (key === 'delete' || key === 'backspace') { deletePart(app.selected); event.preventDefault(); return; }
@@ -3036,6 +3403,15 @@ function init() {
     option.textContent = MATERIALS[key].label;
     materials.appendChild(option);
   });
+  const textures = $('selTexture');
+  [{ value: 'auto', label: 'Auto (selon la matière)' }, { value: 'none', label: 'Aucune' }]
+    .concat(Object.keys(TEXTURES).map(function (key) { return { value: key, label: TEXTURES[key].label }; }))
+    .forEach(function (entry) {
+      const option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      textures.appendChild(option);
+    });
   bindControls();
   bindExports();
   bindDropZone();
@@ -3047,9 +3423,20 @@ function init() {
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', function (event) {
     event.preventDefault();
-    if (app.draft.length > 2) validateDraft();
-    else cancelDraft();
+    if (app.draft.length > 2) { validateDraft(); return; }
+    if (app.draft.length || app.pending) { cancelDraft(); return; }
+    const world = pointerWorld(event);
+    const part = pickPart(world.x, world.y);
+    if (part) select(part);
+    openMenu(event.clientX, event.clientY, part, world);
   });
+  window.addEventListener('pointerdown', function (event) {
+    if (!$('menu').classList.contains('show')) return;
+    if ($('menu').contains(event.target)) return;
+    closeMenu();
+  }, true);
+  window.addEventListener('blur', closeMenu);
+  window.addEventListener('resize', closeMenu);
   window.addEventListener('keydown', onKeyDown);
 
   $('inpBgColor').style.display = 'none';
