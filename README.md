@@ -14,7 +14,6 @@ Un bureau créatif inspiré de Windows 95, avec une roue de logiciels en perspec
 - Paper Free
 - Orbit — Studio de texte 3D (depuis Google Drive)
 - PUPPET.studio
-- Sound Scraper
 - Flora — laboratoire de couleurs
 - ROTO.studio
 
@@ -22,7 +21,7 @@ Chaque programme est embarqué comme page HTML dans `apps/`. La fenêtre entièr
 
 Le compteur en haut à droite affiche les navigateurs uniques du jour (UTC), partagé entre tous les visiteurs via Supabase. Il conserve un identifiant aléatoire uniquement pour la journée en cours.
 
-Sound Scraper est livré avec son interface HTML ; ses fonctions de recherche et d'export complètes nécessitent aussi son serveur Python/API, qui n'est pas hébergé par GitHub Pages. Certains logiciels peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
+ROTO.studio peut réduire la fréquence d'extraction des images d'une vidéo (par exemple de 60 à 24 images par seconde) directement dans le navigateur. Certains logiciels peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
 
 ## Publier avec GitHub Pages
 

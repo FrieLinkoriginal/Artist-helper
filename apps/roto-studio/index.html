@@ -143,15 +143,13 @@ label.check input{accent-color:var(--acc)}
       <div class="body">
         <button id="btnOpen" class="primary" style="width:100%">Ouvrir une vidéo</button>
         <input type="file" id="fileInput" accept="video/*" hidden>
-        <div class="row" style="margin-top:7px">
-          <select id="selFps" title="Images par seconde à extraire">
-            <option value="8">8 im/s</option>
-            <option value="12" selected>12 im/s</option>
-            <option value="15">15 im/s</option>
-            <option value="24">24 im/s</option>
-            <option value="25">25 im/s</option>
-            <option value="30">30 im/s</option>
-          </select>
+        <div class="ctrl" style="margin-top:9px">
+          <div class="lab"><label for="selFps">FPS à extraire</label><span id="outFps">12 im/s</span></div>
+          <input type="number" id="selFps" value="12" min="1" max="60" step="1" title="Fréquence des images extraites (1 à 60 images par seconde)">
+          <p class="hint" style="margin-top:6px">Exemple : entrez 24 pour passer une vidéo à 60 images/s à une séquence de 24 images/s.</p>
+        </div>
+        <div class="ctrl">
+          <div class="lab"><label for="selWidth">Résolution de travail</label><span></span></div>
           <select id="selWidth" title="Largeur de travail">
             <option value="640">640 px</option>
             <option value="854">854 px</option>
@@ -161,9 +159,10 @@ label.check input{accent-color:var(--acc)}
           </select>
         </div>
         <div class="row" style="margin-top:7px">
-          <input type="number" id="numMax" value="400" min="2" max="3000" step="10" title="Nombre maximum d'images">
+          <input type="number" id="numMax" value="1800" min="2" max="3000" step="10" title="Limite maximale d'images extraites">
           <button id="btnClear" class="ghost">Fermer</button>
         </div>
+        <p class="hint" style="margin-top:6px">Limite : 1 800 images par défaut (jusqu’à 3 000 modifiable). Une longue vidéo peut demander plus de mémoire.</p>
         <p class="hint" style="margin-top:8px">Tout reste dans votre navigateur : rien n'est téléversé.</p>
       </div>
     </div>
@@ -679,6 +678,19 @@ function waitSeek(video, time) {
   });
 }
 
+function setFpsSelect(id, fps) {
+  const select = $(id);
+  const value = String(fps);
+  let option = Array.from(select.options).find(function (item) { return item.value === value; });
+  if (!option) {
+    option = document.createElement('option');
+    option.value = value;
+    option.textContent = fps + ' im/s';
+    select.appendChild(option);
+  }
+  select.value = value;
+}
+
 async function loadVideo(file) {
   if (!file) return;
   if (state.busy) return;
@@ -697,13 +709,17 @@ async function loadVideo(file) {
   });
   if (!ready || !video.videoWidth) { toast('Fichier vidéo illisible'); return; }
 
-  const fps = Number($('selFps').value);
+  const fps = CORE.clamp(Math.round(Number($('selFps').value) || 12), 1, 60);
+  $('selFps').value = String(fps);
+  $('outFps').textContent = fps + ' im/s';
   const targetWidth = Math.min(Number($('selWidth').value), video.videoWidth);
   const width = Math.round(targetWidth / 2) * 2;
   const height = Math.round(width * video.videoHeight / video.videoWidth / 2) * 2;
   const duration = isFinite(video.duration) ? video.duration : 0;
-  const maxFrames = CORE.clamp(Number($('numMax').value) || 400, 2, 3000);
-  const count = Math.max(1, Math.min(maxFrames, Math.round(duration * fps)));
+  const maxFrames = CORE.clamp(Number($('numMax').value) || 1800, 2, 3000);
+  $('numMax').value = String(maxFrames);
+  const requestedCount = Math.max(1, Math.ceil(duration * fps));
+  const count = Math.min(maxFrames, requestedCount);
 
   const grab = document.createElement('canvas');
   grab.width = width; grab.height = height;
@@ -757,12 +773,16 @@ async function loadVideo(file) {
   $('numTo').value = frames.length;
   $('numFrom').max = frames.length;
   $('numTo').max = frames.length;
-  $('selPlayFps').value = String([6, 8, 12, 24].indexOf(fps) >= 0 ? fps : 12);
-  $('selExportFps').value = String([8, 12, 24, 25, 30].indexOf(fps) >= 0 ? fps : 12);
+  setFpsSelect('selPlayFps', fps);
+  setFpsSelect('selExportFps', fps);
   buildStrip();
   applyZoom();
   gotoFrame(0);
-  toast(frames.length + ' images extraites');
+  if (requestedCount > maxFrames) {
+    toast(frames.length + ' images à ' + fps + ' im/s (limite atteinte : augmentez la limite)');
+  } else {
+    toast(frames.length + ' images extraites à ' + fps + ' im/s');
+  }
 }
 
 function releaseProject() {
@@ -1440,6 +1460,10 @@ paint.addEventListener('pointercancel', endStroke);
 window.addEventListener('pointerup', function () { if (state.drawing || pan) endStroke(); });
 paint.addEventListener('contextmenu', function (event) { event.preventDefault(); });
 
+$('selFps').addEventListener('input', function () {
+  const fps = Number(this.value);
+  $('outFps').textContent = Number.isFinite(fps) && fps >= 1 && fps <= 60 ? Math.round(fps) + ' im/s' : '1–60 im/s';
+});
 $('btnOpen').addEventListener('click', function () { $('fileInput').click(); });
 $('fileInput').addEventListener('change', function (event) { loadVideo(event.target.files[0]); });
 $('btnClear').addEventListener('click', function () { stopPlayback(); releaseProject(); });
