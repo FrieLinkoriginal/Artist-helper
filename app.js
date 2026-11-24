@@ -12,10 +12,24 @@ const musicAudio = document.querySelector('#music-audio');
 const musicStatus = document.querySelector('#music-status');
 const playButton = document.querySelector('#play-track');
 const tracks = [
-  { title: 'Honk', file: 'honk.mp3', url: './assets/music/honk.mp3' },
-  { title: 'Merci Cécé', file: 'merci-cece.mp3', url: './assets/music/merci-cece.mp3' },
-  { title: 'Midnigt', file: 'midnigt.mp3', url: './assets/music/midnigt.mp3' },
-  { title: 'Project_1', file: 'project-1.mp3', url: './assets/music/project-1.mp3' },
+  { title: 'Fusée en origami', file: 'Fusee-en-origami.mp3', url: './assets/music/3ds.mp3' },
+  { title: 'Bossa du grille-pain', file: 'Bossa-du-grille-pain.mp3', url: './assets/music/bosa.mp3' },
+  { title: 'Lapin à réaction', file: 'Lapin-a-reaction.mp3', url: './assets/music/bun.mp3' },
+  { title: 'Prisme en cavale', file: 'Prisme-en-cavale.mp3', url: './assets/music/cromacore.mp3' },
+  { title: 'Fantôme dans le brouillard', file: 'Fantome-dans-le-brouillard.mp3', url: './assets/music/ghost-in-the-smoke.mp3' },
+  { title: 'Le klaxon de Saturne', file: 'Le-klaxon-de-Saturne.mp3', url: './assets/music/honk.mp3' },
+  { title: 'Champignon turbo', file: 'Champignon-turbo.mp3', url: './assets/music/mario.mp3' },
+  { title: 'Merci les étoiles', file: 'Merci-les-etoiles.mp3', url: './assets/music/merci-cece.mp3' },
+  { title: 'Minuit en chaussettes', file: 'Minuit-en-chaussettes.mp3', url: './assets/music/midnigt.mp3' },
+  { title: "L'œil de la comète", file: 'Oeil-de-la-comete.mp3', url: './assets/music/night-eye.mp3' },
+  { title: "Rien d'anormal", file: 'Rien-d-anormal.mp3', url: './assets/music/normal.mp3' },
+  { title: 'Projet 404', file: 'Projet-404.mp3', url: './assets/music/project-1-1.mp3' },
+  { title: 'Biscuit électrique', file: 'Biscuit-electrique.mp3', url: './assets/music/project-1.mp3' },
+  { title: 'Le docteur danse', file: 'Le-docteur-danse.mp3', url: './assets/music/robotnik.mp3' },
+  { title: "Lapin d'Halloween", file: 'Lapin-d-Halloween.mp3', url: './assets/music/spoopy-bun.mp3' },
+  { title: 'Supernova en skate', file: 'Supernova-en-skate.mp3', url: './assets/music/super.mp3' },
+  { title: 'Citrouille atomique', file: 'Citrouille-atomique.mp3', url: './assets/music/test-spooke-2.mp3' },
+  { title: 'Vent dans les néons', file: 'Vent-dans-les-neons.mp3', url: './assets/music/wind.mp3' },
 ];
 
 let tools = [];
