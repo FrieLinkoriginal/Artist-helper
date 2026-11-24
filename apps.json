@@ -100,16 +100,6 @@
     "color": "#f1c2a1"
   },
   {
-    "id": "sound-scraper",
-    "title": "Sound Scraper",
-    "description": "Cherche des mots dans des chansons et assemble des extraits. La recherche complète attend son serveur API.",
-    "category": "Son & musique",
-    "emoji": "🎛️",
-    "url": "./apps/sound-scraper/index.html",
-    "type": "HTML · API",
-    "color": "#b5d4d1"
-  },
-  {
     "id": "flora",
     "title": "Flora — laboratoire de couleurs",
     "description": "Explore les harmonies chromatiques et compose une palette de couleurs vivante.",
@@ -122,7 +112,7 @@
   {
     "id": "roto-studio",
     "title": "ROTO.studio",
-    "description": "Fais de la rotoscopie image par image directement dans ton navigateur.",
+    "description": "Fais de la rotoscopie image par image et choisis la fréquence d'extraction (par exemple 24 images/s).",
     "category": "Dessin & animation",
     "emoji": "🎞️",
     "url": "./apps/roto-studio/index.html",
