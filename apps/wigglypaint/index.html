@@ -67,6 +67,8 @@
   .modalCard h3:first-of-type{margin-top:0}
   .modalCard input[type=text]{width:100%;padding:11px 13px;border:2px solid #dddde6;border-radius:12px;font-size:15px;font-family:inherit;outline:none}
   .modalCard input[type=text]:focus{border-color:#4361ee}
+  .modalCard input[type=number]{width:110px;padding:8px 10px;border:2px solid #dddde6;border-radius:10px;font:inherit}
+  .modalCard input[type=number]:focus{border-color:#4361ee;outline:none}
   .modalBtns{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
   .optRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .chip{
@@ -150,6 +152,8 @@
   <div class="modalCard">
     <h2>Exporter</h2>
     <input type="text" id="fileName" value="wigglypaint.gif" />
+    <div class="row" style="margin-top:14px"><label for="gifDuration">Durée de l’animation (s)</label><input type="number" id="gifDuration" value="2" min="0.1" max="60" step="0.1"></div>
+    <div class="row"><label for="gifFps">Images par seconde</label><input type="number" id="gifFps" value="12" min="1" max="30" step="1"></div>
     <div class="modalBtns">
       <button class="funcBtn" id="btnCancelExport">Annuler</button>
       <button class="funcBtn primary" id="btnDoExport">Sauvegarder</button>
@@ -898,7 +902,11 @@ function download(blob, name){
 }
 async function exportGIF(filename){
   if (typeof GIF === 'undefined'){ toast('Export GIF indisponible hors ligne'); return; }
-  var fps = 12, frames = 24;
+  var fps = Math.max(1, Math.min(30, Math.round(Number($('gifFps').value) || 12)));
+  var duration = Math.max(0.1, Math.min(60, Number($('gifDuration').value) || 2));
+  $('gifFps').value = String(fps);
+  $('gifDuration').value = String(duration);
+  var frames = Math.max(1, Math.round(duration * fps));
   showProgress(true);
   var ec = document.createElement('canvas'); ec.width = W; ec.height = H;
   var e2 = ec.getContext('2d');
@@ -930,7 +938,7 @@ async function exportGIF(filename){
   gif.on('finished', function(blob){
     download(blob, filename);
     showProgress(false);
-    toast('GIF exporté !');
+    toast('GIF exporté · ' + duration.toFixed(1) + ' s à ' + fps + ' im/s');
   });
   gif.render();
 }

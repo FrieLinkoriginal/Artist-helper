@@ -2,7 +2,7 @@
   {
     "id": "ascii-glyph",
     "title": "ASCII Glyph",
-    "description": "Transforme une image, un GIF ou une vidéo en création typographique ASCII.",
+    "description": "Transforme une image, un GIF ou une vidéo en création typographique ASCII et règle la durée max de l’export vidéo.",
     "category": "Image & pixel",
     "emoji": "🔠",
     "url": "./apps/ascii-glyph/index.html",
@@ -32,7 +32,7 @@
   {
     "id": "wigglypaint",
     "title": "WigglyPaint",
-    "description": "Dessine, anime tes traits et exporte tes créations en GIF.",
+    "description": "Dessine, anime tes traits et règle la durée et la cadence d’export du GIF.",
     "category": "Dessin & animation",
     "emoji": "🖍️",
     "url": "./apps/wigglypaint/index.html",
@@ -42,7 +42,7 @@
   {
     "id": "pixel-converter",
     "title": "Pixel Converter",
-    "description": "Transforme images et vidéos avec des effets pixel et des palettes rétro.",
+    "description": "Transforme images et vidéos avec des effets pixel, et limite la durée de l’export vidéo.",
     "category": "Image & pixel",
     "emoji": "🧩",
     "url": "./apps/pixel-converter/index.html",
@@ -92,7 +92,7 @@
   {
     "id": "puppet-studio",
     "title": "PUPPET.studio",
-    "description": "Découpe une image en morceaux, articule une marionnette et exporte son animation.",
+    "description": "Découpe une image en morceaux, articule une marionnette et règle la durée max de l’animation exportée.",
     "category": "Dessin & animation",
     "emoji": "🪆",
     "url": "./apps/puppet-studio/index.html?v=2",
@@ -102,7 +102,7 @@
   {
     "id": "flora",
     "title": "Flora — laboratoire de couleurs",
-    "description": "Explore les harmonies chromatiques et compose une palette de couleurs vivante.",
+    "description": "Explore les harmonies chromatiques et règle la durée max de tes exports vidéo.",
     "category": "Couleurs",
     "emoji": "🌼",
     "url": "./apps/flora/index.html",

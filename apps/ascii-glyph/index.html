@@ -59,6 +59,8 @@ window.addEventListener('DOMContentLoaded',function(){
   .spacer{flex:1}
   #srcinfo{font-family:var(--mono);font-size:10.5px;color:var(--dim);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hbtn{display:flex;align-items:center;gap:5px}
+  .duration-setting{display:flex;align-items:center;gap:4px;color:var(--dim);font-size:10px;white-space:nowrap}
+  .duration-setting input{width:64px;background:#0d1116;color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px;font:inherit}
   .dot{width:6px;height:6px;border-radius:50%;background:var(--dim)}
   .dot.live{background:var(--acc);box-shadow:0 0 6px var(--acc)}
 
@@ -122,6 +124,7 @@ window.addEventListener('DOMContentLoaded',function(){
     <button class="hbtn" id="exPng"><span class="dot"></span>PNG</button>
     <button id="exTxt">TXT</button>
     <button id="exHtml">HTML</button>
+    <label class="duration-setting" title="Durée maximale de l’export vidéo">Max (s)<input id="exportDurationSec" type="number" min="0" max="3600" step="0.1" value="0" aria-label="Durée maximale de la vidéo en secondes"></label>
     <button class="hbtn" id="exVid"><span class="dot" id="recdot"></span><span id="reclabel">Vidéo</span></button>
     <button id="copy">Copier</button>
   </div>
@@ -1019,6 +1022,8 @@ function autoCell(){
 }
 function afterLoad(name,label){
   srcName=name;
+  const sourceDuration=Number(src&&src.duration);
+  $('exportDurationSec').value=Number.isFinite(sourceDuration)&&sourceDuration>0?sourceDuration.toFixed(1):'0';
   setInfo(label||name);
   autoCell();
   t0=performance.now(); revealStart=performance.now();
@@ -1279,20 +1284,39 @@ async function copyTXT(){
 }
 
 /* ---------------- enregistrement vidéo ---------------- */
-let rec=null, recCancel=false;
+let rec=null, recCancel=false, recDurationTimer=0;
 async function record(){
   if(rec){ rec.stop(); return }
   if(!src)return toast('Charge une source d’abord');
   const out=$('out'), btn=$('exVid');
   if(!window.MediaRecorder||!out.captureStream)return toast('Enregistrement vidéo non supporté ici');
   const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].find(t=>MediaRecorder.isTypeSupported(t))||'';
+  const source=vid&&src===vid?vid:null, previousLoop=source?source.loop:null, previousRate=source?source.playbackRate:1;
+  if(source){
+    source.loop=false;
+    if('playbackRate' in source)source.playbackRate=1;
+    if(Number(source.currentTime)>0){
+      source.pause();
+      await new Promise(resolve=>{
+        let done=false;
+        const finish=()=>{if(done)return;done=true;source.removeEventListener('seeked',finish);resolve()};
+        source.addEventListener('seeked',finish,{once:true});
+        try{source.currentTime=0}catch(_){finish()}
+        setTimeout(finish,1000);
+      });
+    }
+  }
+  const maxSeconds=Math.max(0,Number($('exportDurationSec').value)||0);
   recording=true;
   const stream=out.captureStream(Math.max(8,P.fps));
   const chunks=[];
   const r=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:1.2e7}:{videoBitsPerSecond:1.2e7});
   rec=r; recCancel=false;
+  const stopRecording=()=>{if(rec===r&&r.state!=='inactive')r.stop()};
   r.ondataavailable=e=>{ if(e.data.size)chunks.push(e.data) };
   r.onstop=()=>{
+    clearTimeout(recDurationTimer);recDurationTimer=0;
+    if(source){source.removeEventListener('ended',stopRecording);source.loop=previousLoop;if('playbackRate' in source)source.playbackRate=previousRate}
     rec=null; recording=false;
     btn.classList.remove('on'); $('recdot').classList.remove('live');
     $('reclabel').textContent='Vidéo';
@@ -1301,13 +1325,15 @@ async function record(){
       const type=(r.mimeType||mime||'video/webm').split(';')[0];
       const ext=type.includes('mp4')?'mp4':'webm';
       saveURL(URL.createObjectURL(new Blob(chunks,{type})),baseName()+'.'+ext);
-      toast(`Vidéo ${ext} — ${Math.round(chunks.reduce((a,c)=>a+c.size,0)/1024)} Ko`);
+      toast(`Vidéo ${ext} · ${maxSeconds?Math.min(maxSeconds,source&&Number(source.duration)||maxSeconds).toFixed(1)+' s max':'durée source'} — ${Math.round(chunks.reduce((a,c)=>a+c.size,0)/1024)} Ko`);
     }
   };
+  if(source)source.addEventListener('ended',stopRecording,{once:true});
   r.start(250);
+  if(maxSeconds>0)recDurationTimer=setTimeout(stopRecording,maxSeconds*1000);
   btn.classList.add('on'); $('reclabel').textContent='Stop';
   $('recdot').classList.add('live');
-  if(vid&&vid.paused)vid.play().catch(()=>{});
+  if(source&&source.paused)source.play().catch(()=>{});
   toast('Enregistrement en cours…');
 }
 
