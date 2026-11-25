@@ -228,7 +228,13 @@ label.check input{accent-color:var(--acc)}
       <button id="btnStep" title="Une image">⏭</button>
       <button id="btnRest" title="Replacer au repos">⟲ Repos</button>
       <button id="btnRecord" style="min-width:108px">⏺ Enregistrer</button>
-      <button id="btnPlayTake" title="Relire la prise">▶ Prise</button>
+      <button id="btnPlayTake" title="Relire la prise enregistrée">▶ Prise</button>
+      <button id="btnAddKey" title="Créer ou remplacer une clé à cette seconde">＋ Clé</button>
+      <button id="btnDeleteKey" class="ghost" title="Supprimer la clé au curseur">− Clé</button>
+      <button id="btnPlayKeys" title="Lire l’animation par clés">▶ Animation</button>
+      <button id="btnClearKeys" class="ghost" title="Effacer toutes les clés">Vider clés</button>
+      <label class="time" style="display:flex;align-items:center;gap:4px">t <input id="keyTimeInput" type="number" min="0" max="60" step="0.1" value="0" style="width:54px;padding:4px"> s</label>
+      <label class="time" style="display:flex;align-items:center;gap:4px">Durée <input id="keyDuration" type="number" min="1" max="60" step="1" value="5" style="width:54px;padding:4px"> s</label>
       <div class="time"><b id="timeFrame">0</b> / <span id="timeTotal">0</span></div>
       <div class="spacer"></div>
       <label class="check" style="margin:0"><input type="checkbox" id="chkRig" checked> montrer le rig</label>
@@ -548,17 +554,23 @@ const PHYS = (function () {
     return true;
   }
 
-  function ropeLocal(part) {
-    return (part.rope && part.rope.local) ? part.rope.local : { x: 0, y: 0 };
+  function ropeList(part) {
+    if (Array.isArray(part.ropes)) return part.ropes;
+    return part.rope ? [part.rope] : [];
   }
 
-  function ropeTie(part) {
-    const local = ropeLocal(part);
+  function ropeLocal(part, rope) {
+    const tether = rope || ropeList(part)[0];
+    return (tether && tether.local) ? tether.local : { x: 0, y: 0 };
+  }
+
+  function ropeTie(part, rope) {
+    const local = ropeLocal(part, rope);
     return localToWorld(part, local.x, local.y);
   }
 
-  function applyRopeAt(part, anchorX, anchorY, length) {
-    const tie = ropeTie(part);
+  function applyRopeAt(part, anchorX, anchorY, length, tether) {
+    const tie = ropeTie(part, tether);
     const dx = tie.x - anchorX, dy = tie.y - anchorY;
     const distance = Math.sqrt(dx * dx + dy * dy);
     if (distance <= length || distance === 0) return false;
@@ -571,16 +583,16 @@ const PHYS = (function () {
     return true;
   }
 
-  function applyRopeJoint(part, pivotX, pivotY) {
-    if (!part.rope) return false;
-    let tie = ropeTie(part);
+  function applyRopeJoint(part, pivotX, pivotY, tether) {
+    if (!tether) return false;
+    let tie = ropeTie(part, tether);
     const armX = tie.x - pivotX, armY = tie.y - pivotY;
     if (armX * armX + armY * armY < 16) tie = localToWorld(part, part.com.x, part.com.y);
-    const dx = tie.x - part.rope.x, dy = tie.y - part.rope.y;
+    const dx = tie.x - tether.x, dy = tie.y - tether.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance <= part.rope.length || distance === 0) return false;
-    const targetX = part.rope.x + dx / distance * part.rope.length;
-    const targetY = part.rope.y + dy / distance * part.rope.length;
+    if (distance <= tether.length || distance === 0) return false;
+    const targetX = tether.x + dx / distance * tether.length;
+    const targetY = tether.y + dy / distance * tether.length;
     const current = Math.atan2(tie.y - pivotY, tie.x - pivotX);
     const wanted = Math.atan2(targetY - pivotY, targetX - pivotX);
     const delta = normalizeAngle(wanted - current);
@@ -634,13 +646,19 @@ const PHYS = (function () {
         part.vx /= drag; part.vy /= drag;
         part.x += part.vx * dt;
         part.y += part.vy * dt;
-        if (part.rope) {
-          applyRopeAt(part, part.rope.x, part.rope.y, part.rope.length);
-          const before = { x: part.localAngle, y: 0 };
+        const ropes = ropeList(part);
+        if (ropes.length) {
+          for (let solve = 0; solve < 4; solve++) {
+            for (let r = 0; r < ropes.length; r++) applyRopeAt(part, ropes[r].x, ropes[r].y, ropes[r].length, ropes[r]);
+          }
+          const before = part.localAngle;
           part.localAngle = part.angle;
           pendulum(part, part.x, part.y, gravity, wind, dt, null, 0);
           part.angle = part.localAngle;
-          part.localAngle = before.x;
+          part.localAngle = before;
+          for (let solve = 0; solve < 3; solve++) {
+            for (let r = 0; r < ropes.length; r++) applyRopeAt(part, ropes[r].x, ropes[r].y, ropes[r].length, ropes[r]);
+          }
         } else {
           part.angVel /= (1 + (part.damping / Math.max(0.05, part.mass)) * dt);
           part.angle += part.angVel * dt;
@@ -666,9 +684,13 @@ const PHYS = (function () {
       part.angle = parent.angle + part.localAngle;
       pendulum(part, pivot.x, pivot.y, gravity, wind, dt, pivotAcc, flow);
       part.angle = parent.angle + part.localAngle;
-      if (part.rope && applyRopeJoint(part, pivot.x, pivot.y)) {
-        part.angle = parent.angle + part.localAngle;
+      const ropes = ropeList(part);
+      for (let solve = 0; solve < 3; solve++) {
+        let corrected = false;
+        for (let r = 0; r < ropes.length; r++) corrected = applyRopeJoint(part, pivot.x, pivot.y, ropes[r]) || corrected;
+        if (!corrected) break;
       }
+      if (ropes.length) part.angle = parent.angle + part.localAngle;
     }
     return order;
   }
@@ -712,7 +734,8 @@ const PHYS = (function () {
           joint.y += (targetY - grab.y) * weight;
           joint.vx = (targetX - grab.x) * weight * 8;
           joint.vy = (targetY - grab.y) * weight * 8;
-          if (joint.rope) applyRopeAt(joint, joint.rope.x, joint.rope.y, joint.rope.length);
+          const ropes = ropeList(joint);
+          for (let r = 0; r < ropes.length; r++) applyRopeAt(joint, ropes[r].x, ropes[r].y, ropes[r].length, ropes[r]);
           updateTree(parts, byId);
         }
       }
@@ -1139,7 +1162,7 @@ const TOOLS = [
   { id: 'pivot',  label: 'Pivot',     icon: '🎯', key: 'p', tip: 'Cliquez le point de rotation du morceau.' },
   { id: 'joint',  label: 'Joint',     icon: '🔗', key: 'j', tip: 'Cliquez l’enfant, puis le point d’accroche sur le parent.' },
   { id: 'nail',   label: 'Clou',      icon: '📌', key: 'n', tip: 'Cliquez un morceau : il est figé, la gravité ne l’atteint plus.' },
-  { id: 'rope',   label: 'Ficelle',   icon: '🧵', key: 'f', tip: 'Cliquez où nouer la ficelle sur le morceau, puis son point d’attache. Fonctionne aussi sur un membre articulé.' },
+  { id: 'rope',   label: 'Ficelle',   icon: '🧵', key: 'f', tip: 'Cliquez le membre, puis un point fixe. Recommencez pour ajouter plusieurs suspentes; clic droit pour gérer les points.' },
   { id: 'cam',    label: 'Caméra',    icon: '🎥', key: 'c', tip: 'Glissez pour déplacer la vue, molette pour zoomer.' }
 ];
 
@@ -1165,6 +1188,11 @@ const app = {
   playingTake: false,
   takeIndex: 0,
   take: { fps: 24, frames: [] },
+  keyframes: [],
+  keyTime: 0,
+  keyDuration: 5,
+  keyEditMode: false,
+  playingKeys: false,
   accumulator: 0,
   last: 0,
   fps: 0,
@@ -1561,6 +1589,7 @@ function createPart(points, name) {
     parentId: null,
     anchor: { x: 0, y: 0 },
     rope: null,
+    ropes: [],
     com: { x: state.ox + state.w / 2, y: state.oy + state.h / 2 },
     limit: { on: false, min: -Math.PI / 3, max: Math.PI / 3 },
     texture: 'auto',
@@ -1694,7 +1723,7 @@ function splitPart(part, from, to) {
     x: part.x, y: part.y, angle: part.angle, localAngle: 0, rest: 0,
     vx: 0, vy: 0, angVel: 0,
     z: part.z + 1,
-    link: 'free', parentId: null, anchor: { x: 0, y: 0 }, rope: null,
+    link: 'free', parentId: null, anchor: { x: 0, y: 0 }, rope: null, ropes: [],
     com: { x: clone.ox + clone.w / 2, y: clone.oy + clone.h / 2 },
     limit: { on: false, min: -Math.PI / 3, max: Math.PI / 3 },
     texture: part.texture || 'auto', textureMix: part.textureMix == null ? 35 : part.textureMix,
@@ -1761,8 +1790,9 @@ function refreshPartPanel() {
   if (!part) return;
   $('inpName').value = part.name;
   $('selLink').value = part.link;
+  const ropeCount = getRopes(part).length;
   $('outLink').textContent = (part.parentId ? 'sur ' + (scene.parts.filter(function (p) { return p.id === part.parentId; })[0] || {}).name : 'libre') +
-    (part.rope ? ' + ficelle' : '');
+    (ropeCount ? ' + ' + ropeCount + ' ficelle' + (ropeCount > 1 ? 's' : '') : '');
   $('selMaterial').value = part.material;
   $('outMat').textContent = (MATERIALS[part.material] || {}).label || '';
   $('rngMass').value = part.mass; $('outMass').textContent = part.mass.toFixed(1);
@@ -2100,22 +2130,21 @@ function drawRig(target) {
       target.arc(anchor.x, anchor.y, 4 * unit, 0, Math.PI * 2);
       target.fill();
     }
-    if (part.rope && part.link !== 'nail') {
-      const tie = PHYS.ropeTie(part);
-      target.setLineDash([6 * unit, 5 * unit]);
-      target.strokeStyle = 'rgba(167,139,250,.85)';
-      target.beginPath();
-      target.moveTo(part.rope.x, part.rope.y);
-      target.lineTo(tie.x, tie.y);
-      target.stroke();
-      target.setLineDash([]);
-      target.fillStyle = '#a78bfa';
-      target.beginPath();
-      target.arc(part.rope.x, part.rope.y, 3.5 * unit, 0, Math.PI * 2);
-      target.fill();
-      target.beginPath();
-      target.arc(tie.x, tie.y, 2.6 * unit, 0, Math.PI * 2);
-      target.fill();
+    if (part.link !== 'nail') {
+      const ropes = getRopes(part);
+      ropes.forEach(function(rope,index){
+        const tie = PHYS.ropeTie(part, rope);
+        target.setLineDash([6 * unit, 5 * unit]);
+        target.strokeStyle = index ? 'rgba(167,139,250,.55)' : 'rgba(167,139,250,.9)';
+        target.beginPath();
+        target.moveTo(rope.x, rope.y);
+        target.lineTo(tie.x, tie.y);
+        target.stroke();
+        target.setLineDash([]);
+        target.fillStyle = '#a78bfa';
+        target.beginPath();target.arc(rope.x, rope.y, 4 * unit, 0, Math.PI * 2);target.fill();
+        target.beginPath();target.arc(tie.x, tie.y, 2.8 * unit, 0, Math.PI * 2);target.fill();
+      });
     }
     if (part.link === 'nail') {
       target.setLineDash([]);
@@ -2204,39 +2233,48 @@ function render() {
 
 /* ------------------------------------------------------------- frise */
 function drawTimeline() {
-  const strip = $('timeline');
-  const dpr = pixelRatio();
+  const strip = $('timeline'), dpr = pixelRatio();
   const width = Math.max(1, Math.round(strip.clientWidth * dpr));
   const height = Math.max(1, Math.round(46 * dpr));
   if (strip.width !== width || strip.height !== height) { strip.width = width; strip.height = height; }
   const g = strip.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const w = strip.clientWidth, h = 46;
-  g.clearRect(0, 0, w, h);
-  g.fillStyle = '#08080d';
-  g.fillRect(0, 0, w, h);
-  const total = app.take.frames.length;
+  const w = strip.clientWidth, h = 46, total = app.take.frames.length;
+  g.clearRect(0, 0, w, h);g.fillStyle = '#08080d';g.fillRect(0, 0, w, h);
+  $('statTake').textContent = String(total);
+  if (app.keyEditMode || app.keyframes.length) {
+    const duration = Math.max(1, app.keyDuration), keys = app.keyframes;
+    $('timeTotal').textContent = keys.length + ' clés';
+    $('timeFrame').textContent = app.keyTime.toFixed(1) + ' s';
+    g.fillStyle = '#1a1a25';g.fillRect(0, 15, w, 18);
+    for(let second=0;second<=duration;second++){
+      const x=second/duration*w;g.fillStyle='#363649';g.fillRect(x,13,1,22);
+      if(w/duration>24){g.fillStyle='#77778b';g.font='9px ui-monospace,Menlo,monospace';g.fillText(second+'s',Math.min(w-22,x+3),11);}
+    }
+    g.fillStyle='rgba(167,139,250,.24)';g.fillRect(0,15,w,18);
+    keys.forEach(function(key){
+      const x=Math.max(4,Math.min(w-4,key.time/duration*w));
+      g.fillStyle='#a78bfa';g.beginPath();g.moveTo(x,13);g.lineTo(x+5,23);g.lineTo(x,33);g.lineTo(x-5,23);g.closePath();g.fill();
+    });
+    const cursor=Math.max(0,Math.min(w,app.keyTime/duration*w));
+    g.fillStyle=app.playingKeys?'#9ef01a':'#f5f4ff';g.fillRect(Math.max(0,cursor-1),5,2,36);
+    g.fillStyle='#aeb0c0';g.font='10px ui-monospace,Menlo,monospace';
+    g.fillText('ANIMATION · placez le curseur → bougez les membres → ＋ Clé · ◆ clés',8,44);
+    return;
+  }
   $('timeTotal').textContent = String(total);
   $('timeFrame').textContent = String(total ? Math.min(app.takeIndex + 1, total) : 0);
-  $('statTake').textContent = String(total);
   if (!total) {
-    g.fillStyle = '#4a4a60';
-    g.font = '11px ui-monospace,Menlo,monospace';
-    g.fillText('aucune prise — ⏺ Enregistrer pour capturer le mouvement', 10, 27);
+    g.fillStyle = '#4a4a60';g.font = '11px ui-monospace,Menlo,monospace';
+    g.fillText('Prise : Enregistrer · animation : posez une clé avec ＋ Clé', 10, 27);
     return;
   }
   const step = w / total;
-  for (let i = 0; i < total; i++) {
-    g.fillStyle = (i % app.take.fps === 0) ? '#2d2d3f' : '#1a1a25';
-    g.fillRect(i * step, 11, Math.max(1, step - 1), 24);
-  }
-  g.fillStyle = 'rgba(158,240,26,.18)';
-  g.fillRect(0, 11, w, 24);
+  for (let i = 0; i < total; i++) {g.fillStyle = (i % app.take.fps === 0) ? '#2d2d3f' : '#1a1a25';g.fillRect(i * step, 11, Math.max(1, step - 1), 24);}
+  g.fillStyle = 'rgba(158,240,26,.18)';g.fillRect(0, 11, w, 24);
   const x = (Math.min(app.takeIndex, total - 1) + 0.5) * step;
-  g.fillStyle = app.recording ? '#ff4d6d' : '#9ef01a';
-  g.fillRect(Math.max(0, x - 1), 6, 2, 34);
-  g.fillStyle = '#6b6b85';
-  g.font = '10px ui-monospace,Menlo,monospace';
+  g.fillStyle = app.recording ? '#ff4d6d' : '#9ef01a';g.fillRect(Math.max(0, x - 1), 6, 2, 34);
+  g.fillStyle = '#6b6b85';g.font = '10px ui-monospace,Menlo,monospace';
   g.fillText((total / app.take.fps).toFixed(2) + ' s @ ' + app.take.fps + ' im/s', 8, 9);
 }
 
@@ -2246,7 +2284,7 @@ function snapshot() {
     cam: { x: app.camera.x, y: app.camera.y, zoom: app.camera.zoom, rot: app.camera.rot, squash: app.camera.squash },
     parts: scene.parts.map(function (part) {
       return {
-        id: part.id, x: part.x, y: part.y, angle: part.angle,
+        id: part.id, x: part.x, y: part.y, angle: part.angle, localAngle: part.localAngle,
         angVel: part.angVel, vx: part.vx, active: part.active, visible: part.visible
       };
     })
@@ -2260,6 +2298,7 @@ function applySnapshot(frame, withCamera) {
     const part = byId.get(saved.id);
     if (!part) return;
     part.x = saved.x; part.y = saved.y; part.angle = saved.angle;
+    if (saved.localAngle != null) part.localAngle = saved.localAngle;
     part.angVel = saved.angVel || 0; part.vx = saved.vx || 0;
     part.active = Math.min(saved.active || 0, part.states.length - 1);
     part.visible = saved.visible !== false;
@@ -2268,6 +2307,93 @@ function applySnapshot(frame, withCamera) {
     app.camera.x = frame.cam.x; app.camera.y = frame.cam.y;
     app.camera.zoom = frame.cam.zoom; app.camera.rot = frame.cam.rot; app.camera.squash = frame.cam.squash;
   }
+}
+
+function poseAtTime(time) {
+  const keys=app.keyframes;if(!keys.length)return null;
+  if(time<=keys[0].time)return keys[0].pose;
+  if(time>=keys[keys.length-1].time)return keys[keys.length-1].pose;
+  let right=1;while(right<keys.length&&keys[right].time<time)right++;
+  const a=keys[right-1],b=keys[right],t=(time-a.time)/Math.max(.0001,b.time-a.time);
+  const byA=new Map(a.pose.parts.map(function(p){return[p.id,p]}));
+  const byB=new Map(b.pose.parts.map(function(p){return[p.id,p]}));
+  const parts=scene.parts.map(function(part){
+    const p=byA.get(part.id),q=byB.get(part.id);if(!p&&!q)return null;
+    const from=p||q,to=q||p;
+    return {id:part.id,x:from.x+(to.x-from.x)*t,y:from.y+(to.y-from.y)*t,
+      angle:from.angle+PHYS.normalizeAngle(to.angle-from.angle)*t,
+      localAngle:(from.localAngle==null?part.localAngle:from.localAngle)+PHYS.normalizeAngle((to.localAngle==null?part.localAngle:to.localAngle)-(from.localAngle==null?part.localAngle:from.localAngle))*t,
+      active:t<1?from.active:to.active,visible:t<1?from.visible:to.visible};
+  }).filter(Boolean);
+  function mixCamera(key1,key2){
+    if(!key1||!key2)return key1||key2;
+    return {x:key1.x+(key2.x-key1.x)*t,y:key1.y+(key2.y-key1.y)*t,
+      zoom:key1.zoom+(key2.zoom-key1.zoom)*t,rot:key1.rot+PHYS.normalizeAngle(key2.rot-key1.rot)*t,
+      squash:key1.squash+(key2.squash-key1.squash)*t};
+  }
+  return {parts:parts,cam:mixCamera(a.pose.cam,b.pose.cam)};
+}
+
+function applyKeyPose(time,quiet) {
+  const pose=poseAtTime(time);if(!pose)return;
+  const byId=PHYS.indexParts(scene.parts);
+  pose.parts.forEach(function(saved){
+    const part=byId.get(saved.id);if(!part)return;
+    part.active=Math.min(saved.active||0,part.states.length-1);part.visible=saved.visible!==false;
+    part.localAngle=saved.localAngle==null?part.localAngle:saved.localAngle;
+    part.x=saved.x;part.y=saved.y;part.angle=saved.angle;part.vx=0;part.vy=0;part.angVel=0;
+  });
+  PHYS.updateTree(scene.parts,byId);
+  if(pose.cam){app.camera.x=pose.cam.x;app.camera.y=pose.cam.y;app.camera.zoom=pose.cam.zoom;app.camera.rot=pose.cam.rot;app.camera.squash=pose.cam.squash;}
+  if(!quiet){refreshParts();refreshPartPanel();refreshStates();}
+}
+
+function seekKeyTime(time,apply) {
+  app.keyDuration=Math.max(1,Math.min(60,+$('keyDuration').value||app.keyDuration||5));
+  app.keyTime=Math.max(0,Math.min(app.keyDuration,+time||0));
+  $('keyTimeInput').value=app.keyTime.toFixed(1);
+  if(apply&&app.keyframes.length)applyKeyPose(app.keyTime);
+}
+
+function addKeyframe() {
+  app.keyEditMode=true;app.playingKeys=false;app.playingTake=false;
+  $('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';$('btnPlayTake').classList.remove('on');
+  if(app.simulating)setSimulating(false);
+  app.keyDuration=Math.max(1,Math.min(60,+$('keyDuration').value||5));
+  const time=Math.max(0,Math.min(app.keyDuration,+$('keyTimeInput').value||0));
+  app.keyTime=time;
+  const key={time:time,pose:snapshot()};
+  const existing=app.keyframes.findIndex(function(item){return Math.abs(item.time-time)<.025;});
+  if(existing>=0)app.keyframes[existing]=key;else app.keyframes.push(key);
+  app.keyframes.sort(function(a,b){return a.time-b.time;});
+  $('btnPlayKeys').classList.remove('on');
+  drawTimeline();updateExportInfo();toast('Clé posée à '+time.toFixed(1)+' s · '+app.keyframes.length+' clé(s)');
+}
+
+function deleteKeyframe() {
+  app.playingKeys=false;$('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';
+  if(!app.keyframes.length){toast('Aucune clé à supprimer');return;}
+  let nearest=0;for(let i=1;i<app.keyframes.length;i++)if(Math.abs(app.keyframes[i].time-app.keyTime)<Math.abs(app.keyframes[nearest].time-app.keyTime))nearest=i;
+  if(Math.abs(app.keyframes[nearest].time-app.keyTime)>.25){toast('Aucune clé près du curseur');return;}
+  const removed=app.keyframes.splice(nearest,1)[0];
+  toast('Clé de '+removed.time.toFixed(1)+' s supprimée');drawTimeline();updateExportInfo();
+}
+
+function playKeyframes() {
+  if(!app.keyframes.length){toast('Posez au moins une clé avec ＋ Clé');return;}
+  app.keyDuration=Math.max(1,Math.min(60,+$('keyDuration').value||5));
+  app.keyEditMode=true;app.playingTake=false;app.playingKeys=true;app.keyTime=0;app.playAcc=0;
+  if(app.simulating)setSimulating(false);
+  $('btnPlayTake').classList.remove('on');
+  $('btnPlayKeys').classList.add('on');$('btnPlayKeys').textContent='⏸ Animation';
+  setMode('ANIM','sim');seekKeyTime(0,true);
+}
+
+function keyframesTick(dt) {
+  app.keyTime+=dt;
+  if(app.keyTime>=app.keyDuration){app.keyTime=app.keyDuration;applyKeyPose(app.keyTime,true);app.playingKeys=false;$('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';setMode('PAUSE','');syncCameraUI();}
+  else applyKeyPose(app.keyTime,true);
+  $('keyTimeInput').value=app.keyTime.toFixed(1);
 }
 
 function markHome() {
@@ -2289,7 +2415,10 @@ function restPose() {
 
 function setSimulating(on) {
   app.simulating = on;
-  if (on) { markHome(); app.playingTake = false; }
+  if (on) {
+    markHome();app.playingTake=false;app.playingKeys=false;
+    $('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';
+  }
   $('btnSim').textContent = on ? '⏸ Physique' : '▶ Physique';
   $('btnSim').classList.toggle('on', on);
   setMode(app.recording ? 'REC' : (on ? 'SIMU' : 'PAUSE'), app.recording ? 'rec' : (on ? 'sim' : ''));
@@ -2349,7 +2478,8 @@ function tick(stamp) {
   app.clock += dt;
   if (dt > 0) app.fps = app.fps ? app.fps * 0.9 + (1 / dt) * 0.1 : 1 / dt;
   $('statFps').textContent = String(Math.round(app.fps));
-  if (app.playingTake) playbackTick(dt);
+  if (app.playingKeys) keyframesTick(dt);
+  else if (app.playingTake) playbackTick(dt);
   else if (app.simulating && !app.busy) physicsStep(dt);
   if (app.recording && !app.playingTake) captureTick(dt);
   render();
@@ -2399,7 +2529,6 @@ function attachJoint(child, parent, wx, wy) {
   child.anchor = { x: anchor.x, y: anchor.y };
   child.localAngle = PHYS.normalizeAngle(child.angle - parent.angle);
   child.rest = child.localAngle;
-  child.rope = null;
   child.vx = 0; child.vy = 0; child.angVel = 0;
   child.home = { x: child.x, y: child.y, angle: child.angle, localAngle: child.localAngle };
   select(child);
@@ -2420,27 +2549,36 @@ function toggleNail(part) {
   refreshPartPanel();
 }
 
+function getRopes(part) {
+  if (Array.isArray(part.ropes)) return part.ropes;
+  return part.rope ? [part.rope] : [];
+}
+
 function attachRope(part, wx, wy, tieLocal) {
   const local = tieLocal || { x: 0, y: 0 };
   const tie = PHYS.localToWorld(part, local.x, local.y);
   const length = Math.max(10, Math.hypot(tie.x - wx, tie.y - wy));
-  part.rope = { x: wx, y: wy, length: length, local: { x: local.x, y: local.y } };
+  const tether = { x: wx, y: wy, length: length, local: { x: local.x, y: local.y } };
+  if (!Array.isArray(part.ropes)) part.ropes = part.rope ? [part.rope] : [];
+  part.ropes.push(tether);
+  part.rope = part.ropes[0];
   if (part.link === 'free') part.link = 'rope';
   part.vx = 0; part.vy = 0;
   refreshParts();
   refreshPartPanel();
-  toast(part.link === 'joint'
-    ? 'Ficelle sur le joint · ' + Math.round(length) + ' px : la chute est retenue, le balancement reste libre'
-    : 'Ficelle posée · longueur ' + Math.round(length) + ' px');
+  toast('Ficelle ajoutée · point ' + part.ropes.length + ' · longueur ' + Math.round(length) + ' px');
 }
 
-function removeRope(part) {
-  if (!part || !part.rope) return;
-  part.rope = null;
-  if (part.link === 'rope') part.link = part.parentId != null ? 'joint' : 'free';
+function removeRope(part, index) {
+  if (!part || !getRopes(part).length) return;
+  if (!Array.isArray(part.ropes)) part.ropes = getRopes(part).slice();
+  if (index == null) part.ropes = [];
+  else part.ropes.splice(index, 1);
+  part.rope = part.ropes[0] || null;
+  if (part.link === 'rope' && !part.ropes.length) part.link = part.parentId != null ? 'joint' : 'free';
   refreshParts();
   refreshPartPanel();
-  toast('Ficelle retirée');
+  toast(part.ropes.length ? 'Point de ficelle retiré' : 'Toutes les ficelles retirées');
 }
 
 function detachJoint(part) {
@@ -2460,8 +2598,8 @@ function setLink(part, value) {
     $('selLink').value = part.link;
     return;
   }
-  if (value === 'rope' && !part.rope) { attachRope(part, part.x, part.y - 140); return; }
-  if (value === 'free') { part.parentId = null; part.rope = null; }
+  if (value === 'rope' && !getRopes(part).length) { attachRope(part, part.x, part.y - 140); return; }
+  if (value === 'free') { part.parentId = null; part.rope = null; part.ropes = []; }
   part.link = value;
   part.vx = 0; part.vy = 0; part.angVel = 0;
   refreshParts();
@@ -2532,7 +2670,8 @@ function partInfo(part) {
   const rows = [];
   rows.push({ label: 'Attache', value: part.link === 'joint' ? 'joint sur ' + (parent ? parent.name : '?')
     : part.link === 'nail' ? 'clou (figé)' : part.link === 'rope' ? 'libre + ficelle' : 'libre (tombe)' });
-  rows.push({ label: 'Ficelle', value: part.rope ? Math.round(part.rope.length) + ' px' : 'aucune' });
+  const ropes = getRopes(part);
+  rows.push({ label: 'Ficelles', value: ropes.length ? ropes.length + ' point(s) · ' + ropes.map(function(r){return Math.round(r.length)+' px'}).join(', ') : 'aucune' });
   rows.push({ label: 'Matière', value: (MATERIALS[part.material] || {}).label || part.material });
   rows.push({ label: 'Texture', value: textureLabel(part) + (textureKind(part) ? ' · ' + Math.round(part.textureMix == null ? 35 : part.textureMix) + ' %' : '') });
   rows.push({ label: 'Angle', value: Math.round(part.localAngle * 180 / Math.PI) + '°' +
@@ -2583,15 +2722,15 @@ function openMenu(clientX, clientY, part, world) {
     host.appendChild(document.createElement('hr'));
 
     menuButton(host, '🎯 Pivot ici', function () { setPivot(part, world.x, world.y); toast('Pivot déplacé'); });
-    if (part.rope) {
-      menuButton(host, '🧵 Retirer la ficelle', function () { removeRope(part); });
-      menuButton(host, '🧵 Renouer la ficelle ici', function () {
-        attachRope(part, part.rope.x, part.rope.y, PHYS.worldToLocal(part, world.x, world.y));
-      });
-    } else {
-      menuButton(host, '🧵 Accrocher une ficelle ici', function () {
-        const local = PHYS.worldToLocal(part, world.x, world.y);
-        attachRope(part, world.x, world.y - 140, local);
+    const ropes = getRopes(part);
+    menuButton(host, '🧵 Ajouter une ficelle ici', function () {
+      const local = PHYS.worldToLocal(part, world.x, world.y);
+      attachRope(part, world.x, world.y - 140, local);
+    });
+    if (ropes.length) {
+      menuButton(host, '🧵 Retirer toutes les ficelles (' + ropes.length + ')', function () { removeRope(part); });
+      ropes.forEach(function(rope,index){
+        menuButton(host, 'Retirer le point ' + (index+1), function () { removeRope(part,index); });
       });
     }
     if (part.link === 'nail') menuButton(host, '📌 Retirer le clou', function () { toggleNail(part); });
@@ -2793,6 +2932,7 @@ function onPointerDown(event) {
     attachRope(app.pending, world.x, world.y, app.pendingLocal);
     app.pending = null;
     app.pendingLocal = null;
+    toast('Point fixe ajouté · recommencez sur un membre pour ajouter une autre suspente');
   }
 }
 
@@ -3002,10 +3142,29 @@ function bindControls() {
   $('btnRecord').addEventListener('click', function () { setRecording(!app.recording); });
   $('btnPlayTake').addEventListener('click', function () {
     if (!app.take.frames.length) { toast('Aucune prise enregistrée'); return; }
+    app.playingKeys=false;$('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';
     app.playingTake = !app.playingTake;
     if (app.playingTake) { setSimulating(false); setMode('LECTURE', 'sim'); }
     else setMode('PAUSE', '');
     $('btnPlayTake').classList.toggle('on', app.playingTake);
+  });
+  $('btnAddKey').addEventListener('click',addKeyframe);
+  $('btnDeleteKey').addEventListener('click',deleteKeyframe);
+  $('btnClearKeys').addEventListener('click',function(){
+    app.keyframes=[];app.keyEditMode=true;app.keyTime=0;app.playingKeys=false;
+    $('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';$('keyTimeInput').value='0';
+    toast('Toutes les clés ont été effacées');drawTimeline();updateExportInfo();
+  });
+  $('btnPlayKeys').addEventListener('click',function(){
+    if(app.playingKeys){app.playingKeys=false;this.classList.remove('on');this.textContent='▶ Animation';setMode('PAUSE','');}
+    else playKeyframes();
+  });
+  $('keyTimeInput').addEventListener('change',function(){app.keyEditMode=true;seekKeyTime(this.value,true);syncCameraUI();});
+  $('keyDuration').addEventListener('change',function(){
+    app.keyDuration=Math.max(1,Math.min(60,+this.value||5));this.value=app.keyDuration;
+    const resized=app.keyframes.map(function(k){k.time=Math.min(k.time,app.keyDuration);return k;}).sort(function(a,b){return a.time-b.time;});
+    app.keyframes=[];resized.forEach(function(k){if(app.keyframes.length&&Math.abs(app.keyframes[app.keyframes.length-1].time-k.time)<.001)app.keyframes[app.keyframes.length-1]=k;else app.keyframes.push(k);});
+    seekKeyTime(app.keyTime,app.keyframes.length>0);drawTimeline();updateExportInfo();
   });
   $('btnClearTake').addEventListener('click', function () {
     app.take.frames = [];
@@ -3016,16 +3175,17 @@ function bindControls() {
   });
 
   $('timeline').addEventListener('pointerdown', function (event) {
-    const total = app.take.frames.length;
-    if (!total) return;
     const rect = this.getBoundingClientRect();
-    const ratio = PHYS.clamp((event.clientX - rect.left) / rect.width, 0, 0.999);
-    app.takeIndex = Math.floor(ratio * total);
-    app.playingTake = false;
-    app.simulating = false;
-    setSimulating(false);
-    applySnapshot(app.take.frames[app.takeIndex], true);
-    syncCameraUI();
+    const ratio = PHYS.clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    if(app.keyEditMode||app.keyframes.length){
+      app.playingKeys=false;app.playingTake=false;$('btnPlayKeys').classList.remove('on');$('btnPlayKeys').textContent='▶ Animation';$('btnPlayTake').classList.remove('on');
+      if(app.simulating)setSimulating(false);
+      seekKeyTime(ratio*app.keyDuration,true);syncCameraUI();return;
+    }
+    const total = app.take.frames.length;if(!total)return;
+    app.takeIndex = Math.min(total-1,Math.floor(ratio*total));
+    app.playingTake = false;if(app.simulating)setSimulating(false);
+    applySnapshot(app.take.frames[app.takeIndex], true);syncCameraUI();
   });
 
   $('btnOpenImage').addEventListener('click', function () { $('imageInput').click(); });
@@ -3116,7 +3276,7 @@ function backupScene() {
     parts: scene.parts.map(function (part) {
       return {
         id: part.id, x: part.x, y: part.y, angle: part.angle, localAngle: part.localAngle,
-        vx: part.vx, vy: part.vy, angVel: part.angVel, active: part.active
+        vx: part.vx, vy: part.vy, angVel: part.angVel, active: part.active, visible: part.visible
       };
     })
   };
@@ -3129,7 +3289,7 @@ function restoreScene(backup) {
     const part = byId.get(saved.id);
     if (!part) return;
     part.x = saved.x; part.y = saved.y; part.angle = saved.angle; part.localAngle = saved.localAngle;
-    part.vx = saved.vx; part.vy = saved.vy; part.angVel = saved.angVel; part.active = saved.active;
+    part.vx = saved.vx; part.vy = saved.vy; part.angVel = saved.angVel; part.active = saved.active; part.visible = saved.visible !== false;
     part.pivotPrev = null; part.pivotVel = null;
   });
   app.camera.x = backup.camera.x; app.camera.y = backup.camera.y;
@@ -3158,6 +3318,16 @@ function capFramesByExportDuration(frames, fps) {
 }
 
 function framesForExport(fps) {
+  if(app.keyframes.length){
+    const backup=backupScene(),savedTime=app.keyTime;
+    const duration=app.keyDuration,count=Math.max(1,Math.round(duration*fps)),out=[];
+    for(let i=0;i<count;i++){
+      const time=count===1?duration:i/(count-1)*duration;
+      applyKeyPose(time,true);out.push(snapshot());
+    }
+    restoreScene(backup);app.keyTime=savedTime;
+    return capFramesByExportDuration(out,fps);
+  }
   const frames = app.take.frames;
   if (!frames.length) {
     if (!scene.parts.length) return [];
@@ -3167,21 +3337,21 @@ function framesForExport(fps) {
   const duration = frames.length / Math.max(1, app.take.fps);
   const count = Math.max(1, Math.round(duration * fps));
   const out = [];
-  for (let i = 0; i < count; i++) {
-    out.push(frames[Math.min(frames.length - 1, Math.round(i / fps * app.take.fps))]);
-  }
+  for (let i = 0; i < count; i++) out.push(frames[Math.min(frames.length - 1, Math.round(i / fps * app.take.fps))]);
   return capFramesByExportDuration(out, fps);
 }
 
 function updateExportInfo() {
   const fps = parseInt($('selExpFps').value, 10) || 12;
   const dim = exportSize();
-  const rawTotal = app.take.frames.length
-    ? Math.max(1, Math.round(app.take.frames.length / Math.max(1, app.take.fps) * fps))
-    : (scene.parts.length ? Math.max(1, Math.round(3 * fps)) : 0);
+  const rawTotal = app.keyframes.length
+    ? Math.max(1, Math.round(app.keyDuration * fps))
+    : app.take.frames.length
+      ? Math.max(1, Math.round(app.take.frames.length / Math.max(1, app.take.fps) * fps))
+      : (scene.parts.length ? Math.max(1, Math.round(3 * fps)) : 0);
   const maxSeconds = Math.max(0, Number($('numExportSeconds').value) || 0);
   const total = rawTotal && maxSeconds > 0 ? Math.min(rawTotal, Math.max(1, Math.floor(maxSeconds * fps))) : rawTotal;
-  const base = dim.width + '×' + dim.height + ' · ' + (total ? total + ' images (' + (total / fps).toFixed(1) + ' s)' : 'pas de prise → 3 s simulées');
+  const base = dim.width + '×' + dim.height + ' · ' + (total ? total + ' images (' + (total / fps).toFixed(1) + ' s)' : 'pas de prise → 3 s simulées') + (app.keyframes.length ? ' · animation par clés' : '');
   const alpha = $('selBg').value === 'none';
   $('exportInfo').textContent = base + (alpha ? ' · GIF/PNG transparents (le WebM passera sur fond uni)' : '');
 }
@@ -3347,12 +3517,13 @@ function serialize() {
     scene: { gravity: scene.gravity, wind: scene.wind, flow: scene.flow },
     camera: { x: app.camera.x, y: app.camera.y, zoom: app.camera.zoom, rot: app.camera.rot, squash: app.camera.squash },
     take: { fps: app.take.fps, frames: app.take.frames },
+    keyframes: app.keyframes, keyDuration: app.keyDuration, keyTime: app.keyTime,
     parts: scene.parts.map(function (part) {
       return {
         id: part.id, name: part.name, active: part.active,
         x: part.x, y: part.y, angle: part.angle, localAngle: part.localAngle, rest: part.rest,
         z: part.z, link: part.link, parentId: part.parentId,
-        anchor: part.anchor, rope: part.rope, com: part.com, limit: part.limit,
+        anchor: part.anchor, rope: getRopes(part)[0] || null, ropes: getRopes(part), com: part.com, limit: part.limit,
         material: part.material, mass: part.mass, stiffness: part.stiffness, damping: part.damping, bend: part.bend,
         texture: part.texture || 'auto', textureMix: part.textureMix == null ? 35 : part.textureMix,
         visible: part.visible, home: part.home || null,
@@ -3425,7 +3596,8 @@ async function deserialize(data) {
       id: saved.id, name: saved.name, states: states, active: saved.active || 0,
       x: saved.x, y: saved.y, angle: saved.angle, localAngle: saved.localAngle, rest: saved.rest,
       vx: 0, vy: 0, angVel: 0, z: saved.z, link: saved.link, parentId: saved.parentId,
-      anchor: saved.anchor, rope: saved.rope, com: saved.com, limit: saved.limit,
+      anchor: saved.anchor, rope: (saved.ropes && saved.ropes[0]) || saved.rope || null,
+      ropes: saved.ropes || (saved.rope ? [saved.rope] : []), com: saved.com, limit: saved.limit,
       material: saved.material, mass: saved.mass, stiffness: saved.stiffness, damping: saved.damping,
       bend: saved.bend, slices: PHYS.sliceProfile(saved.material, (MATERIALS[saved.material] || MATERIALS.peau).slices),
       texture: saved.texture || 'auto', textureMix: saved.textureMix == null ? 35 : saved.textureMix,
@@ -3437,6 +3609,11 @@ async function deserialize(data) {
   scene.parts = parts;
   app.take = data.take && data.take.frames ? data.take : { fps: 24, frames: [] };
   app.takeIndex = 0;
+  app.keyframes = Array.isArray(data.keyframes) ? data.keyframes : [];
+  app.keyDuration = Math.max(1, Math.min(60, +data.keyDuration || 5));
+  app.keyTime = Math.max(0, Math.min(app.keyDuration, +data.keyTime || 0));
+  app.keyEditMode = app.keyframes.length > 0;app.playingKeys=false;
+  $('keyDuration').value=app.keyDuration;$('keyTimeInput').value=app.keyTime.toFixed(1);
   app.selected = null;
   if (data.camera) {
     app.camera.x = data.camera.x; app.camera.y = data.camera.y; app.camera.zoom = data.camera.zoom;
