@@ -379,6 +379,11 @@ label.check input{accent-color:var(--acc)}
           </select>
         </div>
         <div class="ctrl" style="margin-top:7px">
+          <div class="lab"><label for="numExportSeconds">Durée max (s)</label><span>0 = toute la prise</span></div>
+          <input type="number" id="numExportSeconds" min="0" max="3600" step="0.1" value="0">
+          <p class="hint" style="margin-top:5px">La vidéo, le GIF et la séquence s’arrêtent à cette limite ou à la fin de l’animation, sans la répéter.</p>
+        </div>
+        <div class="ctrl" style="margin-top:7px">
           <div class="lab"><span>Couleurs du GIF</span><span id="outColors">128</span></div>
           <input type="range" id="rngColors" min="8" max="255" step="1" value="128">
         </div>
@@ -3021,12 +3026,18 @@ function simulateTake(seconds, fps) {
   return frames;
 }
 
+function capFramesByExportDuration(frames, fps) {
+  const maxSeconds = Math.max(0, Number($('numExportSeconds').value) || 0);
+  if (!maxSeconds) return frames;
+  return frames.slice(0, Math.max(1, Math.floor(maxSeconds * fps)));
+}
+
 function framesForExport(fps) {
   const frames = app.take.frames;
   if (!frames.length) {
     if (!scene.parts.length) return [];
     toast('Aucune prise : simulation automatique de 3 s');
-    return simulateTake(3, fps);
+    return capFramesByExportDuration(simulateTake(3, fps), fps);
   }
   const duration = frames.length / Math.max(1, app.take.fps);
   const count = Math.max(1, Math.round(duration * fps));
@@ -3034,15 +3045,17 @@ function framesForExport(fps) {
   for (let i = 0; i < count; i++) {
     out.push(frames[Math.min(frames.length - 1, Math.round(i / fps * app.take.fps))]);
   }
-  return out;
+  return capFramesByExportDuration(out, fps);
 }
 
 function updateExportInfo() {
   const fps = parseInt($('selExpFps').value, 10) || 12;
   const dim = exportSize();
-  const total = app.take.frames.length
+  const rawTotal = app.take.frames.length
     ? Math.max(1, Math.round(app.take.frames.length / Math.max(1, app.take.fps) * fps))
-    : 0;
+    : (scene.parts.length ? Math.max(1, Math.round(3 * fps)) : 0);
+  const maxSeconds = Math.max(0, Number($('numExportSeconds').value) || 0);
+  const total = rawTotal && maxSeconds > 0 ? Math.min(rawTotal, Math.max(1, Math.floor(maxSeconds * fps))) : rawTotal;
   const base = dim.width + '×' + dim.height + ' · ' + (total ? total + ' images (' + (total / fps).toFixed(1) + ' s)' : 'pas de prise → 3 s simulées');
   const alpha = $('selBg').value === 'none';
   $('exportInfo').textContent = base + (alpha ? ' · GIF/PNG transparents (le WebM passera sur fond uni)' : '');
@@ -3181,10 +3194,12 @@ async function exportZip() {
       files.push({ name: 'puppet_' + String(i + 1).padStart(4, '0') + '.png', data: new Uint8Array(buffer) });
       progress((i + 1) / frames.length, 'PNG ' + (i + 1) + ' / ' + frames.length);
     }
+    const imageCount = files.length;
+    files.push({ name: 'timing.json', data: new TextEncoder().encode(JSON.stringify({ fps: fps, frame_count: imageCount, duration_seconds: Number((imageCount / fps).toFixed(3)) }, null, 2)) });
     const parts = ZIP.build(files);
     const blob = new Blob(parts, { type: 'application/zip' });
     addFile('puppet-' + stamp() + '.zip', blob, true);
-    toast('ZIP prêt · ' + files.length + ' images');
+    toast('ZIP prêt · ' + imageCount + ' images · ' + (imageCount / fps).toFixed(1) + ' s');
   } catch (error) {
     toast(app.cancel ? 'Export annulé' : 'Échec ZIP : ' + error.message);
   } finally {
@@ -3346,6 +3361,7 @@ function bindExports() {
     updateExportInfo();
   });
   $('selExpFps').addEventListener('change', updateExportInfo);
+  $('numExportSeconds').addEventListener('input', updateExportInfo);
   $('selExpScale').addEventListener('change', updateExportInfo);
   $('selCapFps').addEventListener('change', function () {
     if (!app.take.frames.length) app.take.fps = parseInt(this.value, 10) || 24;

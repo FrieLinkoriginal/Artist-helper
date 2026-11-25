@@ -310,6 +310,11 @@ label.check input{accent-color:var(--acc)}
             <option value="30">30 im/s</option>
           </select>
         </div>
+        <div class="ctrl" style="margin-top:8px">
+          <div class="lab"><label for="numExportDuration">Durée max de l’animation (s)</label><span>0 = toute la sélection</span></div>
+          <input type="number" id="numExportDuration" value="0" min="0" max="3600" step="0.1">
+          <p class="hint" style="margin-top:5px">L’export ne dépasse jamais cette durée ni la sélection d’images.</p>
+        </div>
         <button id="btnZip" class="primary" style="width:100%;margin-top:8px">⬇ Séquence PNG (ZIP)</button>
         <button id="btnWebm" style="width:100%;margin-top:6px">⬇ Vidéo WebM</button>
         <button id="btnStill" class="ghost" style="width:100%;margin-top:6px">⬇ Image courante (PNG)</button>
@@ -1256,8 +1261,15 @@ function applyZoom() {
 function exportRange() {
   const total = state.frames.length;
   const from = CORE.clamp(Number($('numFrom').value) || 1, 1, total) - 1;
-  const to = CORE.clamp(Number($('numTo').value) || total, 1, total) - 1;
-  return { from: Math.min(from, to), to: Math.max(from, to) };
+  let to = CORE.clamp(Number($('numTo').value) || total, 1, total) - 1;
+  const start = Math.min(from, to);
+  to = Math.max(from, to);
+  const maxSeconds = Math.max(0, Number($('numExportDuration').value) || 0);
+  if (maxSeconds > 0) {
+    const maxFrames = Math.max(1, Math.floor(maxSeconds * Math.max(1, state.fps)));
+    to = Math.min(to, start + maxFrames - 1);
+  }
+  return { from: start, to: to };
 }
 
 async function composeFrame(index, scale) {
@@ -1307,9 +1319,11 @@ async function exportZip() {
   setMode('PRÊT', '');
   $('meter').style.width = '0%';
   if (!files.length) return;
+  const imageCount = files.length;
+  files.push({ name: 'timing.json', data: new TextEncoder().encode(JSON.stringify({ fps: state.fps, frame_count: imageCount, duration_seconds: Number((imageCount / Math.max(1, state.fps)).toFixed(3)), first_source_frame: range.from + 1 }, null, 2)) });
   const blob = new Blob(ZIP.build(files), { type: 'application/zip' });
   addFile('roto-sequence-' + Date.now() + '.zip', blob, true);
-  toast(files.length + ' PNG exportés');
+  toast(imageCount + ' PNG exportés · ' + (imageCount / Math.max(1, state.fps)).toFixed(1) + ' s');
 }
 
 async function exportWebm() {
@@ -1318,6 +1332,11 @@ async function exportWebm() {
   const range = exportRange();
   const scale = Number($('selScale').value);
   const fps = Number($('selExportFps').value);
+  const sourceFrameCount = range.to - range.from + 1;
+  const selectedSeconds = sourceFrameCount / Math.max(1, state.fps);
+  const requestedMaxSeconds = Math.max(0, Number($('numExportDuration').value) || 0);
+  const outputSeconds = Math.min(selectedSeconds, requestedMaxSeconds > 0 ? requestedMaxSeconds : selectedSeconds);
+  const outputFrameCount = Math.max(1, Math.floor(outputSeconds * fps));
   const transparent = $('selBg').value === 'none';
   await composeFrame(range.from, scale);
   const stream = exportCanvas.captureStream(fps);
@@ -1337,7 +1356,9 @@ async function exportWebm() {
   if (transparent) $('overlayText').textContent = 'La vidéo ne gère pas la transparence : fond noir utilisé.';
   recorder.start();
 
-  for (let index = range.from; index <= range.to && !state.cancel; index++) {
+  for (let outIndex = 0; outIndex < outputFrameCount && !state.cancel; outIndex++) {
+    const sourceOffset = Math.min(sourceFrameCount - 1, Math.round(outIndex * state.fps / fps));
+    const index = range.from + sourceOffset;
     const started = performance.now();
     if (transparent) {
       exportCtx.save();
@@ -1350,10 +1371,10 @@ async function exportWebm() {
     } else {
       await composeFrame(index, scale);
     }
-    const ratio = (index - range.from + 1) / (range.to - range.from + 1);
+    const ratio = (outIndex + 1) / outputFrameCount;
     $('overlayMeter').style.width = (ratio * 100) + '%';
     $('meter').style.width = (ratio * 100) + '%';
-    $('overlayText').textContent = 'Image ' + (index + 1) + ' / ' + (range.to + 1);
+    $('overlayText').textContent = 'Image exportée ' + (outIndex + 1) + ' / ' + outputFrameCount;
     const wait = 1000 / fps - (performance.now() - started);
     if (wait > 0) await new Promise(function (resolve) { setTimeout(resolve, wait); });
   }
@@ -1366,7 +1387,7 @@ async function exportWebm() {
   $('meter').style.width = '0%';
   const blob = new Blob(chunks, { type: 'video/webm' });
   addFile('roto-' + Date.now() + '.webm', blob, true);
-  toast('Vidéo WebM exportée');
+  toast('WebM exportée · ' + (outputFrameCount / fps).toFixed(1) + ' s à ' + fps + ' im/s');
 }
 
 async function exportStill() {

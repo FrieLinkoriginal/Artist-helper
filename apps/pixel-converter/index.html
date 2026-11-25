@@ -363,6 +363,8 @@ ou un par ligne, ou 5d275d"></textarea></div>
 
         <section class="pane" data-pane="exp">
           <h4>Sortie</h4>
+          <div class="f"><label>Durée max de la vidéo (secondes)</label><input id="videoMaxSeconds" type="number" value="0" min="0" max="3600" step="0.1"></div>
+          <div class="hint">0 = durée complète de la source; sinon l’export s’arrête à cette limite ou à la fin de la source, sans la répéter.</div>
           <div class="f"><label>Échelle (agrandissement entier)</label>
             <select id="escale">
               <option value="1">×1 — taille écran</option>
@@ -1055,7 +1057,7 @@ async function doExport(download=true){
    Interface : panneaux, dessin, recadrage, avant/après, vidéo, export
    ===================================================================== */
 var dlgHist=[];
-let showOriginal=false, recording=false, recScale=2;
+let showOriginal=false, recording=false, recScale=2, recordDurationTimer=0;
 let tool='pen', col='#ffffff', lastCell=null, raf=0, dragMode=null, dragStart=null;
 
 /* ---------------- rendu ---------------- */
@@ -1398,6 +1400,8 @@ async function applyVoice(){
 function startMedia(v,name,gif){
   stopVideo();
   vid=v; src=v; fc=0; DL.width=1;
+  const sourceDuration=Number(v.duration);
+  $('videoMaxSeconds').value=Number.isFinite(sourceDuration)&&sourceDuration>0?sourceDuration.toFixed(1):'0';
   $('st').textContent=name;
   $('vbox').classList.add('on');
   $('rec').style.display='';
@@ -1559,6 +1563,7 @@ async function record(){
   rec=r; recCancel=false;
   r.ondataavailable=e=>{ if(e.data.size)chunks.push(e.data) };
   r.onstop=()=>{
+    clearTimeout(recordDurationTimer); recordDurationTimer=0;
     rec=null; recording=false; v.onended=null; btn.textContent=label; btn.classList.remove('on');
     if(v===vid){ v.loop=was.loop; v.playbackRate=was.rate; applySound(); v.currentTime=0; v.play().catch(()=>{}) }
     render();
@@ -1570,6 +1575,8 @@ async function record(){
   };
   v.onended=()=>setTimeout(()=>{ render(); if(r.state!=='inactive')r.stop() },200);
   r.start(250);
+  const maxSeconds=Math.max(0,Number($('videoMaxSeconds').value)||0);
+  if(maxSeconds>0)recordDurationTimer=setTimeout(()=>{if(r.state!=='inactive')r.stop()},maxSeconds*1000);
   btn.textContent='■ STOP 0 %'; btn.classList.add('on');
   try{ await v.play() }catch(e){ r.stop(); return }
   schedFrame();

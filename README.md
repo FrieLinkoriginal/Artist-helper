@@ -21,7 +21,7 @@ Chaque programme est embarqué comme page HTML dans `apps/`. La fenêtre entièr
 
 Le compteur en haut à droite affiche les navigateurs uniques du jour (UTC), partagé entre tous les visiteurs via Supabase. Il conserve un identifiant aléatoire uniquement pour la journée en cours.
 
-ROTO.studio peut réduire la fréquence d'extraction des images d'une vidéo (par exemple de 60 à 24 images par seconde) directement dans le navigateur. Certains logiciels peuvent charger des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
+ROTO.studio peut réduire la fréquence d'extraction d'une vidéo (par exemple de 60 à 24 images par seconde). Les exports animés des logiciels vidéo proposent une durée maximale; ils conservent la cadence choisie et s'arrêtent à la fin de la source sans la répéter. WigglyPaint permet aussi de régler la durée et la cadence de son GIF. Certains logiciels chargent des polices ou bibliothèques depuis Internet. Les fichiers importés depuis Drive sont des copies : leurs changements ne se synchronisent pas automatiquement.
 
 ## Publier avec GitHub Pages
 
