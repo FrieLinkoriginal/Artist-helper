@@ -100,6 +100,16 @@
   .seg button:hover{color:var(--txt)}
   .seg button.on{background:rgba(255,159,69,.14); border-color:rgba(255,159,69,.55); color:#ffc48c}
 
+  .camPadWrap{border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:#0c1117}
+  #camPad{display:block;width:100%;height:154px;touch-action:none;cursor:crosshair}
+  .camHelp{color:var(--dim);font-size:10.5px;margin:5px 0 8px;line-height:1.4}
+  .keyBtns{display:flex;gap:6px;margin:7px 0}
+  .keyBtns .btn{flex:1;justify-content:center;padding:6px 7px}
+  .keyList{display:flex;flex-direction:column;gap:4px;max-height:112px;overflow:auto}
+  .keyItem{display:flex;align-items:center;gap:6px;width:100%;padding:5px 7px;border:1px solid var(--line2);border-radius:6px;background:#19191f;color:var(--dim);font-size:10.5px;text-align:left;cursor:pointer}
+  .keyItem.on{border-color:rgba(255,159,69,.6);color:#ffc48c;background:rgba(255,159,69,.1)}
+  .keyItem span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}
+  .keyDot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none}
   .moves{display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin:8px 0 10px}
   .move{
     display:flex; flex-direction:column; align-items:center; gap:5px; padding:8px 2px 6px;
@@ -231,6 +241,17 @@
         <label class="chk"><input type="checkbox" id="glowOnly">Flicker Glow Only</label>
       </div>
 
+      <div class="grp" id="cameraPathPanel">
+        <h3>Trajectoire caméra · 2D</h3>
+        <div class="camPadWrap"><canvas id="camPad" width="300" height="154" aria-label="Zone de position de la caméra"></canvas></div>
+        <p class="camHelp">Glisse le point pour régler X/Y. Place la tête de lecture, puis ajoute un point clé pour mémoriser position, inclinaison et cadrage. Les points sont conservés dans ce navigateur.</p>
+        <label class="chk"><input type="checkbox" id="camPathOn">Activer les points clés</label>
+        <div class="row"><label for="pathDuration">Durée du mouvement</label><input id="pathDuration" type="number" min="1" max="120" step="0.5" value="9" style="width:66px;background:#1a1a20;color:var(--txt);border:1px solid var(--line2);border-radius:5px;padding:5px"></div>
+        <div class="row"><label for="keyTime">Position temporelle</label><input type="range" id="keyTime" min="0" max="1000" value="0"><span class="val" id="keyClock">0.0 s</span></div>
+        <div class="keyBtns"><button class="btn" id="addKey">＋ Point clé</button><button class="btn" id="deleteKey" disabled>Supprimer</button></div>
+        <div class="keyList" id="keyList"></div>
+      </div>
+
       <div class="grp">
         <h3>Shot</h3>
         <div class="row"><label>Caméra</label>
@@ -239,8 +260,9 @@
 
       <p class="hint">
         <b>Comment faire :</b> déposez un enregistrement d'écran, choisissez l'écran (LCD, CRT, Phone),
-        puis bougez <b>Tilt</b>, <b>Push In</b> et <b>Focus Blur</b>. Le raccourci <span class="kbd">espace</span>
-        lance la pause, <span class="kbd">E</span> exporte la vidéo.
+        puis réglez la caméra dans la zone 2D. Place la tête de lecture, ajoute plusieurs points clés et règle <b>Tilt X/Y</b>
+        ou <b>Close-up</b> pour chaque point. Le raccourci <span class="kbd">espace</span> lance la pause,
+        <span class="kbd">E</span> exporte la vidéo.
       </p>
     </aside>
   </main>
@@ -290,8 +312,10 @@ const SPEC = [
   ]},
 ];
 
-const P = { type:0, recShape:true, glowOnly:false, moireCol:'#8fd7ff', move:'drift' };
+const P = { type:0, recShape:true, glowOnly:false, moireCol:'#8fd7ff', move:'drift',
+  camEnabled:false,camX:0,camY:0,camKeys:[] };
 SPEC.forEach(s=>s.items.forEach(it=>{ P[it[0]] = it[5]; }));
+let selectedCamKey=null, camPointerDown=false;
 
 const MOVES = [
   ['static','Fixe','<rect x="4" y="4" width="16" height="16" rx="2"/>'],
@@ -358,7 +382,14 @@ SPEC.forEach(sec=>{
     const val = document.createElement('span'); val.className='val';
     const fmt = v=> step<1 ? (+v).toFixed(1) : Math.round(v);
     val.textContent = fmt(P[key]);
-    rng.addEventListener('input', ()=>{ P[key] = parseFloat(rng.value); val.textContent = fmt(P[key]); });
+    rng.addEventListener('input', ()=>{
+      P[key] = parseFloat(rng.value); val.textContent = fmt(P[key]);
+      if(selectedCamKey&&['tiltX','tiltY','framing'].includes(key)){
+        const k=P.camKeys.find(x=>x.id===selectedCamKey);
+        if(k){ k[key]=P[key]; drawCameraPad(); renderKeyList() }
+      }
+      if((P.camEnabled||selectedCamKey)&&['tiltX','tiltY','framing'].includes(key))saveCameraPath();
+    });
     row.append(lab, rng, val); g.append(row);
     sliders[key] = { rng, val, fmt };
   });
@@ -372,6 +403,7 @@ function syncControls(){
   $('#moireCol').value = P.moireCol;
   $('#recShape').checked = P.recShape;
   $('#glowOnly').checked = P.glowOnly;
+  $('#camPathOn').checked = P.camEnabled;
   [...$('#segScreen').children].forEach(b=>b.classList.toggle('on', +b.dataset.t === P.type));
   $('#preset').value = currentPreset || 'doc';
   syncMoves();
@@ -394,8 +426,137 @@ $('#moireCol').addEventListener('input', e=>{ P.moireCol = e.target.value; });
 $('#btnReset').addEventListener('click', ()=>{
   SPEC.forEach(s=>s.items.forEach(it=>{ P[it[0]] = it[5]; }));
   Object.assign(P, {type:0, recShape:true, glowOnly:false});
-  currentPreset = 'doc'; P.move='drift'; P.moveAmt=55; syncControls(); syncMoves(); toast('Réglages réinitialisés');
+  currentPreset = 'doc'; P.move='drift'; P.moveAmt=55;
+  P.camEnabled=false; P.camX=0; P.camY=0; P.camKeys=[]; selectedCamKey=null;
+  $('#camPathOn').checked=false; $('#keyTime').value=0; $('#pathDuration').value=9;
+  syncControls(); syncMoves(); renderKeyList(); drawCameraPad(); saveCameraPath(); toast('Réglages réinitialisés');
 });
+
+/* ---------- trajectoire caméra à points clés ---------- */
+const camPad=$('#camPad'), camCtx=camPad.getContext('2d');
+let camKeySeq=1;
+function pathDuration(){ return Math.max(1,Math.min(120,parseFloat($('#pathDuration').value)||9)) }
+function cameraDuration(){ return S.kind==='video'&&S.video&&Number.isFinite(S.video.duration)&&S.video.duration>0?Math.min(pathDuration(),S.video.duration):pathDuration() }
+function pathProgress(){ return clamp01((APP.time||0)/cameraDuration()) }
+const CAM_PATH_KEY='tellybox-camera-path-v1';
+function saveCameraPath(){
+  try{localStorage.setItem(CAM_PATH_KEY,JSON.stringify({enabled:P.camEnabled,x:P.camX,y:P.camY,
+    tiltX:P.tiltX,tiltY:P.tiltY,framing:P.framing,duration:pathDuration(),keys:P.camKeys}))}catch(e){}
+}
+function loadCameraPath(){
+  try{
+    const data=JSON.parse(localStorage.getItem(CAM_PATH_KEY)||'null');if(!data)return;
+    P.camEnabled=!!data.enabled;P.camX=Number(data.x)||0;P.camY=Number(data.y)||0;
+    if(Number.isFinite(data.tiltX))P.tiltX=data.tiltX;
+    if(Number.isFinite(data.tiltY))P.tiltY=data.tiltY;
+    if(Number.isFinite(data.framing))P.framing=data.framing;
+    P.camKeys=Array.isArray(data.keys)?data.keys.filter(k=>Number.isFinite(k.u)&&Number.isFinite(k.x)&&Number.isFinite(k.y)
+      &&Number.isFinite(k.tiltX)&&Number.isFinite(k.tiltY)&&Number.isFinite(k.framing)):[];
+    if(Number.isFinite(data.duration))$('#pathDuration').value=Math.max(1,Math.min(120,data.duration));
+    camKeySeq=P.camKeys.reduce((max,k)=>Math.max(max,(+k.id||0)+1),1);
+  }catch(e){}
+}
+function clamp01(v){ return Math.max(0,Math.min(1,v)) }
+function sampleCam(u){
+  const keys=P.camKeys.slice().sort((a,b)=>a.u-b.u);
+  if(!keys.length)return {x:P.camX,y:P.camY,tiltX:P.tiltX,tiltY:P.tiltY,framing:P.framing};
+  if(u<=keys[0].u)return keys[0];
+  if(u>=keys[keys.length-1].u)return keys[keys.length-1];
+  let i=0; while(i<keys.length-1&&u>keys[i+1].u)i++;
+  const a=keys[i],b=keys[i+1],t=clamp01((u-a.u)/Math.max(.0001,b.u-a.u)),e=t*t*(3-2*t);
+  return {x:a.x+(b.x-a.x)*e,y:a.y+(b.y-a.y)*e,
+    tiltX:a.tiltX+(b.tiltX-a.tiltX)*e,tiltY:a.tiltY+(b.tiltY-a.tiltY)*e,
+    framing:a.framing+(b.framing-a.framing)*e};
+}
+function drawCameraPad(){
+  if(!camCtx)return;
+  const w=camPad.width,h=camPad.height,pad=20;
+  camCtx.clearRect(0,0,w,h); camCtx.fillStyle='#0c1117'; camCtx.fillRect(0,0,w,h);
+  camCtx.strokeStyle='rgba(180,200,220,.13)'; camCtx.lineWidth=1;
+  for(let i=1;i<4;i++){
+    const x=pad+(w-pad*2)*i/4,y=pad+(h-pad*2)*i/4;
+    camCtx.beginPath();camCtx.moveTo(x,pad);camCtx.lineTo(x,h-pad);camCtx.stroke();
+    camCtx.beginPath();camCtx.moveTo(pad,y);camCtx.lineTo(w-pad,y);camCtx.stroke();
+  }
+  camCtx.strokeStyle='rgba(255,255,255,.3)';camCtx.setLineDash([4,4]);
+  camCtx.strokeRect(pad,pad,w-pad*2,h-pad*2);camCtx.setLineDash([]);
+  const xy=o=>[w/2+o.x*(w/2-pad),h/2-o.y*(h/2-pad)];
+  const keys=P.camKeys.slice().sort((a,b)=>a.u-b.u);
+  if(keys.length){
+    camCtx.beginPath(); keys.forEach((k,i)=>{const [x,y]=xy(k);i?camCtx.lineTo(x,y):camCtx.moveTo(x,y)});
+    camCtx.strokeStyle='rgba(255,159,69,.75)';camCtx.lineWidth=2;camCtx.stroke();
+    keys.forEach((k,i)=>{
+      const [x,y]=xy(k);camCtx.beginPath();camCtx.arc(x,y,k.id===selectedCamKey?6:4,0,Math.PI*2);
+      camCtx.fillStyle=k.id===selectedCamKey?'#fff':'#ff9f45';camCtx.fill();
+      camCtx.fillStyle='#17171b';camCtx.font='9px sans-serif';camCtx.textAlign='center';camCtx.textBaseline='middle';camCtx.fillText(String(i+1),x,y);
+    });
+  }
+  const pose=P.camEnabled&&keys.length?sampleCam(pathProgress()):{x:P.camX,y:P.camY};
+  const [cx,cy]=xy(pose);
+  camCtx.beginPath();camCtx.arc(cx,cy,8,0,Math.PI*2);camCtx.fillStyle='rgba(90,169,255,.22)';camCtx.fill();
+  camCtx.beginPath();camCtx.arc(cx,cy,4.5,0,Math.PI*2);camCtx.fillStyle='#5aa9ff';camCtx.fill();
+  camCtx.strokeStyle='#eaf4ff';camCtx.lineWidth=1.5;camCtx.beginPath();camCtx.moveTo(cx-9,cy);camCtx.lineTo(cx+9,cy);camCtx.moveTo(cx,cy-9);camCtx.lineTo(cx,cy+9);camCtx.stroke();
+}
+function renderKeyList(){
+  const list=$('#keyList'); if(!list)return;
+  list.innerHTML='';
+  const sorted=P.camKeys.slice().sort((a,b)=>a.u-b.u);
+  sorted.forEach((k,i)=>{
+    const b=document.createElement('button');b.type='button';b.className='keyItem'+(k.id===selectedCamKey?' on':'');
+    b.innerHTML='<i class="keyDot"></i><span>Point '+(i+1)+'</span><span>'+((k.u*cameraDuration()).toFixed(1))+' s · '+Math.round(k.tiltX)+'°/'+Math.round(k.tiltY)+'°</span>';
+    b.onclick=()=>selectCamKey(k.id);list.append(b);
+  });
+  $('#deleteKey').disabled=!selectedCamKey;
+  drawCameraPad();
+}
+function updateKeyPlayhead(u,selectPose){
+  u=clamp01(u); const d=cameraDuration();
+  $('#keyTime').value=Math.round(u*1000);$('#keyClock').textContent=(u*d).toFixed(1)+' s';
+  const seconds=u*d;
+  if(S.kind==='video'&&S.video){S.video.pause();S.video.currentTime=Math.min(seconds,S.video.duration||seconds)}
+  else APP.time=seconds;
+  APP.playing=false;$('#btnPlay').textContent='▶';
+  if(selectPose){
+    selectedCamKey=null;
+    const p=sampleCam(u);P.camX=p.x;P.camY=p.y;P.tiltX=p.tiltX;P.tiltY=p.tiltY;P.framing=p.framing;
+    syncControls();renderKeyList();
+  }
+  drawCameraPad();
+}
+function selectCamKey(id){
+  const k=P.camKeys.find(x=>x.id===id);if(!k)return;
+  selectedCamKey=id;P.camX=k.x;P.camY=k.y;P.tiltX=k.tiltX;P.tiltY=k.tiltY;P.framing=k.framing;
+  P.camEnabled=true;$('#camPathOn').checked=true;saveCameraPath();
+  updateKeyPlayhead(k.u,false);syncControls();renderKeyList();
+}
+function addCamKey(){
+  const u=+$('#keyTime').value/1000;
+  let k=P.camKeys.find(x=>Math.abs(x.u-u)<.003);
+  if(!k){k={id:camKeySeq++,u:u};P.camKeys.push(k)}
+  Object.assign(k,{x:P.camX,y:P.camY,tiltX:P.tiltX,tiltY:P.tiltY,framing:P.framing});
+  selectedCamKey=k.id;P.camEnabled=true;$('#camPathOn').checked=true;
+  P.camKeys.sort((a,b)=>a.u-b.u);saveCameraPath();renderKeyList();toast('Point clé enregistré à '+(u*cameraDuration()).toFixed(1)+' s');
+}
+function deleteCamKey(){
+  if(!selectedCamKey)return;
+  P.camKeys=P.camKeys.filter(k=>k.id!==selectedCamKey);selectedCamKey=null;saveCameraPath();renderKeyList();
+}
+function setCamFromPointer(e){
+  const r=camPad.getBoundingClientRect(),x=(e.clientX-r.left)*camPad.width/r.width,y=(e.clientY-r.top)*camPad.height/r.height,pad=20;
+  P.camX=clamp01((x-pad)/(camPad.width-pad*2))*2-1;
+  P.camY=1-clamp01((y-pad)/(camPad.height-pad*2))*2;
+  P.camEnabled=true;$('#camPathOn').checked=true;
+  if(selectedCamKey){const k=P.camKeys.find(k=>k.id===selectedCamKey);if(k){k.x=P.camX;k.y=P.camY}}
+  drawCameraPad();
+}
+camPad.addEventListener('pointerdown',e=>{camPointerDown=true;camPad.setPointerCapture(e.pointerId);setCamFromPointer(e);e.preventDefault()});
+camPad.addEventListener('pointermove',e=>{if(camPointerDown)setCamFromPointer(e)});
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>camPad.addEventListener(t,()=>{if(camPointerDown)saveCameraPath();camPointerDown=false;renderKeyList()}));
+$('#camPathOn').addEventListener('change',e=>{P.camEnabled=e.target.checked;saveCameraPath();drawCameraPad()});
+$('#pathDuration').addEventListener('change',()=>{renderKeyList();updateKeyPlayhead(+$('#keyTime').value/1000,false);saveCameraPath()});
+$('#keyTime').addEventListener('input',e=>updateKeyPlayhead(+e.target.value/1000,true));
+$('#addKey').addEventListener('click',addCamKey);
+$('#deleteKey').addEventListener('click',deleteCamKey);
 
 /* ---------- WebGL ---------- */
 const gl = canvas.getContext('webgl', {antialias:false, preserveDrawingBuffer:true, alpha:false})
@@ -626,7 +787,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([18,18,22,255]));
 
 /* ---------- source (vidéo / image / démo) ---------- */
-const S = { kind:'demo', video:null, img:null, cw:1280, ch:720, w:16, h:9, avg:0.4, ready:false };
+const S = { kind:'demo', video:null, videoURL:null, img:null, cw:1280, ch:720, w:16, h:9, avg:0.4, ready:false };
 
 /* démo : un faux enregistrement d'écran (éditeur de code) */
 const demo = document.createElement('canvas');
@@ -779,6 +940,7 @@ function transpose3(m){ return new Float32Array([m[0],m[3],m[6], m[1],m[4],m[7],
 /* ---------- état caméra ---------- */
 const CAM = { dist:2.35, halfH:0.70, fov:38*Math.PI/180 };
 const APP = { time:0, playing:true, dur:0 };
+loadCameraPath();renderKeyList();
 
 /* ---------- boucle ---------- */
 let last = performance.now();
@@ -795,6 +957,8 @@ function frame(now){
     if(APP.playing) APP.time += dt;
   }
   const loop = Math.max(2, P.moveSpeed || 9);
+  const camU=pathProgress();
+  const manualPose=P.camEnabled?sampleCam(camU):null;
   const cyc = (APP.time % loop) / loop;
   const ease = 0.5 - 0.5*Math.cos(cyc*Math.PI*2);         // 0→1→0
   const swim = Math.sin(cyc*Math.PI*2);
@@ -817,7 +981,7 @@ function frame(now){
   // garder l'écran dans le cadre
   const maxHW = 1.28;
   if(hw > maxHW){ const k = maxHW/hw; hw*=k; hh*=k; }
-  const macro = 1 + (P.framing/100) * 2.8;      // Close-up : on entre dans l'écran
+  const macro = 1 + ((manualPose?manualPose.framing:P.framing)/100) * 2.8;      // Close-up : on entre dans l'écran
   hw *= macro; hh *= macro;
 
   const bezel = P.type===1 ? 0.115 : (P.type===2 ? 0.028 : 0.042);
@@ -839,7 +1003,9 @@ function frame(now){
   const amt = (P.moveAmt ?? 55)/100;
   let dX = 0, dY = 0, dZ = 0, dRX = 0, dRY = 0;
   const R2D = Math.PI/180;
-  switch(P.move){
+  if(manualPose){
+    dX=manualPose.x*0.34; dY=manualPose.y*0.26;
+  }else switch(P.move){
     case 'push':    dZ = -0.34*amt*ease; break;
     case 'pull':    dZ =  0.30*amt*ease; break;
     case 'drift':   dX =  0.17*amt*swim; break;
@@ -858,12 +1024,12 @@ function frame(now){
     }
     default: break;   /* fixe */
   }
-  const shakeX = Math.sin(now*0.0007)*0.0016 + Math.sin(now*0.0023)*0.0008;
-  const shakeY = Math.cos(now*0.0009)*0.0014;
+  const shakeX = manualPose?0:Math.sin(now*0.0007)*0.0016 + Math.sin(now*0.0023)*0.0008;
+  const shakeY = manualPose?0:Math.cos(now*0.0009)*0.0014;
 
   const dist = CAM.dist * (1 + dZ);
-  const tiltX = (P.tiltX * Math.PI/180) + dRX;
-  const tiltY = (P.tiltY * Math.PI/180) + dRY;
+  const tiltX = ((manualPose?manualPose.tiltX:P.tiltX) * Math.PI/180) + dRX;
+  const tiltY = ((manualPose?manualPose.tiltY:P.tiltY) * Math.PI/180) + dRY;
   const R = mat3Mul(rotY(tiltY), rotX(tiltX));
   const Rt = transpose3(R);
 
@@ -936,10 +1102,16 @@ function frame(now){
     APP.dur = S.video.duration;
     $('#seek').value = Math.round(S.video.currentTime/S.video.duration*1000);
     $('#tc').textContent = fmtTime(S.video.currentTime)+' / '+fmtTime(S.video.duration);
+  }else if(P.camEnabled){
+    $('#seek').value=Math.round(pathProgress()*1000);
+    $('#tc').textContent=fmtTime(Math.min(APP.time,cameraDuration()))+' / '+fmtTime(cameraDuration());
   }else{
     $('#seek').value = Math.round((APP.time%loop)/loop*1000);
     $('#tc').textContent = 'boucle '+fmtTime(APP.time%loop);
   }
+  const u=pathProgress();
+  $('#keyTime').value=Math.round(u*1000);$('#keyClock').textContent=(u*cameraDuration()).toFixed(1)+' s';
+  drawCameraPad();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -955,28 +1127,42 @@ function fmtTime(s){
 }
 
 /* ---------- chargement ---------- */
+function clearVideoSource(){
+  if(S.video){S.video.pause();S.video.removeAttribute('src');S.video.load()}
+  if(S.videoURL){URL.revokeObjectURL(S.videoURL);S.videoURL=null}
+  S.video=null;
+}
 function setSourceFromFile(f){
+  if(rec){toast('Arrête l’enregistrement avant de changer la source');return}
   if(!f) return;
   const url = URL.createObjectURL(f);
-  if(/^video\//.test(f.type)){
+  const isVideo=/^video\//.test(f.type||'')||/\.(mp4|m4v|mov|webm|ogv|mkv|avi)$/i.test(f.name||'');
+  if(isVideo){
     const v = document.createElement('video');
     v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.crossOrigin = 'anonymous';
     v.addEventListener('loadedmetadata', ()=>{
-      S.kind='video'; S.video=v; S.img=null;
+      if(rec){URL.revokeObjectURL(url);toast('Arrête l’enregistrement avant de changer la source');return}
+      clearVideoSource();
+      S.kind='video'; S.video=v; S.videoURL=url; S.img=null;
       S.w = v.videoWidth || 16; S.h = v.videoHeight || 9;
-      v.play().catch(()=>{});
+      APP.time=0; APP.playing=true; $('#btnPlay').textContent='❚❚';
+      v.currentTime=0;v.play().catch(()=>{});renderKeyList();
       toast('Enregistrement chargé — '+S.w+'×'+S.h);
     });
-    v.addEventListener('error', ()=>toast('Impossible de lire cette vidéo'));
+    v.addEventListener('error', ()=>{URL.revokeObjectURL(url);toast('Impossible de lire cette vidéo')});
     v.load();
   }else if(/^image\//.test(f.type)){
     const im = new Image();
     im.onload = ()=>{
-      S.kind='image'; S.img=im; S.video=null;
+      if(rec){URL.revokeObjectURL(url);toast('Arrête l’enregistrement avant de changer la source');return}
+      URL.revokeObjectURL(url);
+      clearVideoSource();
+      S.kind='image'; S.img=im;
       S.w = im.naturalWidth; S.h = im.naturalHeight;
+      APP.time=0;APP.playing=true;$('#btnPlay').textContent='❚❚';renderKeyList();
       toast('Image chargée — '+S.w+'×'+S.h);
     };
-    im.onerror = ()=>toast('Impossible de lire cette image');
+    im.onerror = ()=>{URL.revokeObjectURL(url);toast('Impossible de lire cette image')};
     im.src = url;
   }else{
     toast('Format non reconnu (vidéo ou image)');
@@ -985,8 +1171,9 @@ function setSourceFromFile(f){
 $('#file').addEventListener('change', e=>{ setSourceFromFile(e.target.files[0]); e.target.value=''; });
 $('#btnOpen').addEventListener('click', ()=>$('#file').click());
 $('#btnDemo').addEventListener('click', ()=>{
-  S.kind='demo'; S.video=null; S.img=null; S.w=1280; S.h=720;
-  drawDemo(APP.time); toast('Démo : enregistrement d\'un éditeur de code');
+  if(rec){toast('Arrête l’enregistrement avant de changer la source');return}
+  clearVideoSource();S.kind='demo';S.img=null;S.w=1280; S.h=720;APP.time=0;APP.playing=true;$('#btnPlay').textContent='❚❚';
+  drawDemo(APP.time);renderKeyList();toast('Démo : enregistrement d\'un éditeur de code');
 });
 
 /* glisser-déposer */
@@ -1011,7 +1198,7 @@ $('#seek').addEventListener('input', e=>{
   if(S.kind==='video' && S.video && S.video.duration){
     S.video.currentTime = e.target.value/1000 * S.video.duration;
   }else{
-    APP.time = (e.target.value/1000) * 9;
+    APP.time = (e.target.value/1000) * (P.camEnabled?pathDuration():9);
   }
 });
 
@@ -1025,30 +1212,44 @@ function download(blob, name){
 $('#btnPng').addEventListener('click', ()=>{
   canvas.toBlob(b=>{ download(b, 'tellybox.png'); toast('Image exportée'); }, 'image/png');
 });
-let rec = null;
+let rec = null, recTick=0, recState=null;
 $('#btnWebm').addEventListener('click', ()=>{
   if(rec){ rec.stop(); return; }
+  if(!canvas.captureStream||!window.MediaRecorder){ toast('Enregistrement vidéo non supporté par ce navigateur'); return; }
   const mimes = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
-  const mime = mimes.find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported(m));
-  if(!mime){ toast('Enregistrement vidéo non supporté par ce navigateur'); return; }
-  const stream = canvas.captureStream(30);
-  const chunks = [];
-  rec = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 12_000_000});
-  rec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
-  rec.onstop = ()=>{
-    download(new Blob(chunks, {type:'video/webm'}), 'tellybox.webm');
-    $('#rec').classList.remove('on'); $('#btnWebm').textContent='Exporter la vidéo';
-    rec = null; toast('Vidéo exportée');
+  const mime = mimes.find(m=>typeof MediaRecorder.isTypeSupported!=='function'||MediaRecorder.isTypeSupported(m));
+  const stream = canvas.captureStream(30), chunks=[];
+  try{ rec = new MediaRecorder(stream, mime?{mimeType:mime,videoBitsPerSecond:12_000_000}:{}); }
+  catch(e){ stream.getTracks().forEach(t=>t.stop()); toast('Création vidéo impossible'); return; }
+  const video=S.kind==='video'?S.video:null;
+  recState={time:APP.time,playing:APP.playing,video:video,videoTime:video?video.currentTime:0,videoLoop:video?video.loop:false,onended:video?video.onended:null};
+  if(video){ video.pause(); video.loop=false; video.currentTime=0; video.onended=()=>{if(rec)rec.stop()}; }
+  else APP.time=0;
+  APP.playing=true;
+  rec.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
+  rec.onstop=()=>{
+    clearInterval(recTick);recTick=0;
+    stream.getTracks().forEach(t=>t.stop());
+    if(chunks.length)download(new Blob(chunks,{type:rec.mimeType||'video/webm'}),'tellybox.webm');
+    if(recState.video){
+      const v=recState.video;v.onended=recState.onended;v.loop=recState.videoLoop;v.currentTime=Math.min(recState.videoTime,v.duration||recState.videoTime);
+      if(recState.playing)v.play().catch(()=>{});else v.pause();
+    }else APP.time=recState.time;
+    APP.playing=recState.playing;
+    $('#rec').classList.remove('on');$('#btnWebm').textContent='Exporter la vidéo';
+    rec=null;recState=null;toast(chunks.length?'Vidéo exportée':'Export vidéo vide');
   };
-  const dur = (S.kind==='video' && S.video && S.video.duration) ? Math.min(S.video.duration, 30) : 6;
+  const hasPath=P.camEnabled&&P.camKeys.length>0;
+  const dur=video&&video.duration?Math.min(video.duration,hasPath?pathDuration():30):(hasPath?pathDuration():6);
   rec.start();
-  $('#rec').classList.add('on'); $('#btnWebm').textContent = 'Arrêter';
-  const t0 = performance.now();
-  const tick = setInterval(()=>{
-    const s = (performance.now()-t0)/1000;
-    $('#recTxt').textContent = 'REC '+fmtTime(s);
-    if(s >= dur){ clearInterval(tick); if(rec) rec.stop(); }
-  }, 200);
+  if(video)video.play().catch(()=>{if(rec)rec.stop()});
+  $('#rec').classList.add('on');$('#btnWebm').textContent='Arrêter';
+  const t0=performance.now();
+  recTick=setInterval(()=>{
+    const s=(performance.now()-t0)/1000;
+    $('#recTxt').textContent='REC '+fmtTime(s);
+    if(s>=dur&&rec)rec.stop();
+  },40);
 });
 
 /* raccourcis */

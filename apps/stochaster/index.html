@@ -226,9 +226,14 @@ window.addEventListener('DOMContentLoaded',function(){
     <div class="tb"><span class="tl"><i></i><i></i><i></i></span><span class="ttl" id="imgTitle">Image</span></div>
     <div class="wc">
       <div class="btnrow"><button class="btn" id="imgSettings">Settings...</button><button class="btn" id="imgSize">Size...</button><button class="btn" id="imgSave">Save...</button><button class="btn" id="imgBatch">Batch...</button></div>
+      <div id="mediaControls" class="row" style="display:none;gap:5px;margin:0 0 5px">
+        <label for="mediaMax" style="font-size:10px;white-space:nowrap">Max duration :</label>
+        <input id="mediaMax" type="number" min="0" max="3600" step="0.1" value="0" style="width:48px;height:18px;border:1px solid #c2c2c2;border-radius:3px;padding:0 3px;font-size:10px">
+        <span class="unit">sec · 0 = full source</span>
+      </div>
       <div id="imgScroll">
         <canvas id="imgCanvas" width="1" height="1"></canvas>
-        <div id="imgEmpty">Drop or open<br>jpg, png<br>image</div>
+        <div id="imgEmpty">Drop or open<br>image, animated GIF<br>or video</div>
       </div>
       <fieldset><legend>View</legend>
         <div class="row" style="gap:6px">
@@ -335,12 +340,12 @@ window.addEventListener('DOMContentLoaded',function(){
   <div id="mark"><div class="ic"><b>SF</b><s>1.6</s></div></div>
   <div id="mark2">Stochaster Apps<br>www.stochaster-apps.com</div>
   <div id="toast"></div>
-  <div id="drop2">DÉPOSE L'IMAGE</div>
+  <div id="drop2">DÉPOSE IMAGE, GIF OU VIDÉO</div>
   <div id="fatal"><b>Erreur</b><span id="fatalMsg"></span></div>
 </div>
 </div>
 
-<input type="file" id="fileImg" accept="image/*" hidden>
+<input type="file" id="fileImg" accept="image/*,video/*,.gif" hidden>
 <input type="file" id="filePat" accept="image/*" hidden>
 <input type="file" id="dirBatch" webkitdirectory multiple hidden>
 <script type="text/javascript">
@@ -677,6 +682,8 @@ function hueToRGB(h){
   return [f(0),f(8),f(4)];
 }
 
+const sourceWidth=src=>src.videoWidth||src.naturalWidth||src.width;
+const sourceHeight=src=>src.videoHeight||src.naturalHeight||src.height;
 function prepareImage(src,P,tw,th){
   const c=document.createElement('canvas'); c.width=tw; c.height=th;
   const g=c.getContext('2d',{willReadFrequently:true});
@@ -686,7 +693,7 @@ function prepareImage(src,P,tw,th){
   g.translate(tw/2,th/2);
   if(rot) g.rotate(rot*Math.PI/2);
   if(flip) g.scale(-1,1);
-  const iw=src.naturalWidth||src.width, ih=src.naturalHeight||src.height;
+  const iw=sourceWidth(src), ih=sourceHeight(src);
   const swap=(rot%2)===1;
   const bw=swap?ih:iw, bh=swap?iw:ih;      /* emprise après rotation */
   const r=Math.max(tw/bw,th/bh);
@@ -819,7 +826,7 @@ function prepareRGB(src,spec,w,h){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
   const g=c.getContext('2d',{willReadFrequently:true});
   g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
-  const sw=src.naturalWidth||src.width, sh=src.naturalHeight||src.height;
+  const sw=sourceWidth(src), sh=sourceHeight(src);
   const r=Math.max(w/sw,h/sh);
   g.drawImage(src,(w-sw*r)/2,(h-sh*r)/2,sw*r,sh*r);
   const d=g.getImageData(0,0,w,h).data;
@@ -1054,6 +1061,7 @@ const P={
 const COLOR_MODES=[['mono','Mono'],['duo','Duotone'],['cmy','Trichromie CMJ'],['rgb','RVB additif']];
 const PDEF=JSON.parse(JSON.stringify(P));
 const S={src:null, pat:null, name:'—', scale:1, busy:false, pending:false, z:20};
+const MEDIA={type:'image',frames:null,video:null,url:null,timer:0,duration:0,frameIndex:0,recorder:null,exporting:false};
 
 /* ---------------- divers ---------------- */
 let toastT=0;
@@ -1226,18 +1234,390 @@ function drawPatternPreview(){
          m.style.top='50%'; m.style.transform='translate(-50%,-50%)' }
 }
 
-/* ---------------- image ---------------- */
-function loadFile(file,asPattern){
-  if(!file)return;
+function lzw(data,mcs,n){
+  const out=new Uint8Array(n), clear=1<<mcs, eoi=clear+1;
+  const prefix=new Int16Array(4096), suffix=new Uint8Array(4096), stack=new Uint8Array(4097);
+  let op=0,size=mcs+1,next=eoi+1,mask=(1<<size)-1,bits=0,acc=0,pos=0,prev=-1,first=0;
+  for(let i=0;i<clear;i++)suffix[i]=i;
+  while(op<n){
+    while(bits<size){ if(pos>=data.length)return out; acc|=data[pos++]<<bits; bits+=8 }
+    const code=acc&mask; acc>>=size; bits-=size;
+    if(code===clear){ size=mcs+1; next=eoi+1; mask=(1<<size)-1; prev=-1; continue }
+    if(code===eoi)break;
+    if(prev===-1){ out[op++]=suffix[code]; prev=code; first=code; continue }
+    let c=code, sp=0;
+    if(code>=next){ stack[sp++]=first; c=prev }
+    while(c>=clear){ stack[sp++]=suffix[c]; c=prefix[c] }
+    first=suffix[c]; stack[sp++]=first;
+    if(next<4096){ prefix[next]=prev; suffix[next]=first; next++; if((next&mask)===0&&size<12){ size++; mask=(1<<size)-1 } }
+    prev=code;
+    while(sp>0&&op<n)out[op++]=stack[--sp];
+  }
+  return out;
+}
+function parseGif(buf){
+  const d=new Uint8Array(buf); let p=6;
+  if(String.fromCharCode(d[0],d[1],d[2])!=='GIF')throw new Error('pas un GIF');
+  const W=d[p]|d[p+1]<<8, H=d[p+2]|d[p+3]<<8, fl=d[p+4]; p+=7;
+  let gct=null;
+  if(fl&0x80){ const n=2<<(fl&7); gct=d.subarray(p,p+n*3); p+=n*3 }
+  const fr=[]; let gce=null;
+  while(p<d.length){
+    const b=d[p++];
+    if(b===0x3B)break;
+    if(b===0x21){
+      const lab=d[p++];
+      if(lab===0xF9)gce={disp:(d[p+1]>>2)&7,tr:d[p+1]&1?d[p+4]:-1,delay:(d[p+2]|d[p+3]<<8)*10};
+      while(d[p])p+=d[p]+1;
+      p++;
+    }else if(b===0x2C){
+      const x=d[p]|d[p+1]<<8, y=d[p+2]|d[p+3]<<8, w=d[p+4]|d[p+5]<<8, h=d[p+6]|d[p+7]<<8, lf=d[p+8]; p+=9;
+      let ct=gct;
+      if(lf&0x80){ const n=2<<(lf&7); ct=d.subarray(p,p+n*3); p+=n*3 }
+      const mcs=d[p++], ch=[]; let tot=0;
+      while(d[p]){ const n=d[p]; ch.push(d.subarray(p+1,p+1+n)); tot+=n; p+=n+1 }
+      p++;
+      const data=new Uint8Array(tot); let o=0;
+      ch.forEach(c=>{ data.set(c,o); o+=c.length });
+      const idx=lzw(data,mcs,w*h);
+      let rows=null;
+      if(lf&0x40){ rows=[]; [[0,8],[4,8],[2,4],[1,2]].forEach(([s0,st])=>{ for(let yy=s0;yy<h;yy+=st)rows.push(yy) }) }
+      fr.push({x,y,w,h,idx,ct,rows,disp:gce?gce.disp:0,tr:gce?gce.tr:-1,delay:gce?gce.delay:0});
+      gce=null;
+    }else break;
+  }
+  return {W,H,fr};
+}
+function decodeGif(buf){
+  const{W,H,fr}=parseGif(buf);
+  if(!fr.length||!W||!H)throw new Error('GIF vide');
+  const comp=document.createElement('canvas'); comp.width=W; comp.height=H;
+  const cx=comp.getContext('2d',{willReadFrequently:true}), tmp=document.createElement('canvas'), tx=tmp.getContext('2d');
+  const frames=[]; let pd=null;
+  for(const f of fr){
+    if(pd){ if(pd.disp===2)cx.clearRect(pd.x,pd.y,pd.w,pd.h); else if(pd.disp===3&&pd.snap)cx.putImageData(pd.snap,0,0) }
+    const snap=f.disp===3?cx.getImageData(0,0,W,H):null;
+    const id=new ImageData(f.w,f.h), o=id.data, ct=f.ct;
+    if(ct)for(let r=0;r<f.h;r++){
+      const dy=f.rows?f.rows[r]:r;
+      for(let xx=0;xx<f.w;xx++){
+        const ci=f.idx[r*f.w+xx];
+        if(ci===f.tr)continue;
+        const k=(dy*f.w+xx)*4, c3=ci*3;
+        o[k]=ct[c3]; o[k+1]=ct[c3+1]; o[k+2]=ct[c3+2]; o[k+3]=255;
+      }
+    }
+    tmp.width=f.w; tmp.height=f.h; tx.putImageData(id,0,0); cx.drawImage(tmp,f.x,f.y);
+    const c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(comp,0,0);
+    frames.push({c,d:f.delay||100});
+    pd={disp:f.disp,x:f.x,y:f.y,w:f.w,h:f.h,snap};
+  }
+  return {W,H,frames};
+}
+
+const GIFEncoder = (function () {
+
+  function collectSamples(frames, width, height, step) {
+    const samples = [];
+    const totalPixels=frames.reduce((n,data)=>n+data.length/4,0);
+    const stride=Math.max(step,Math.ceil(totalPixels/60000));
+    for (let f = 0; f < frames.length; f++) {
+      const data = frames[f];
+      for (let i = 0; i < data.length; i += 4 * stride) {
+        if (data[i + 3] < 128) continue;
+        samples.push([data[i], data[i + 1], data[i + 2]]);
+      }
+    }
+    return samples;
+  }
+
+  function boxOf(colors) {
+    const box = { colors: colors, min: [255, 255, 255], max: [0, 0, 0] };
+    for (let i = 0; i < colors.length; i++) {
+      for (let channel = 0; channel < 3; channel++) {
+        const value = colors[i][channel];
+        if (value < box.min[channel]) box.min[channel] = value;
+        if (value > box.max[channel]) box.max[channel] = value;
+      }
+    }
+    box.range = Math.max(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]);
+    return box;
+  }
+
+  function splitBox(box) {
+    let channel = 0, best = -1;
+    for (let i = 0; i < 3; i++) {
+      const span = box.max[i] - box.min[i];
+      if (span > best) { best = span; channel = i; }
+    }
+    const sorted = box.colors.slice().sort(function (a, b) { return a[channel] - b[channel]; });
+    const middle = Math.floor(sorted.length / 2);
+    return [boxOf(sorted.slice(0, middle)), boxOf(sorted.slice(middle))];
+  }
+
+  function averageColor(box) {
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < box.colors.length; i++) {
+      r += box.colors[i][0]; g += box.colors[i][1]; b += box.colors[i][2];
+    }
+    const count = Math.max(1, box.colors.length);
+    return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+  }
+
+  function medianCut(samples, maxColors) {
+    if (!samples.length) return [[0, 0, 0]];
+    let boxes = [boxOf(samples)];
+    while (boxes.length < maxColors) {
+      let target = -1, score = -1;
+      for (let i = 0; i < boxes.length; i++) {
+        if (boxes[i].colors.length < 2 || boxes[i].range === 0) continue;
+        const value = boxes[i].range * Math.log(boxes[i].colors.length + 1);
+        if (value > score) { score = value; target = i; }
+      }
+      if (target < 0) break;
+      const pair = splitBox(boxes[target]);
+      boxes.splice(target, 1, pair[0], pair[1]);
+    }
+    return boxes.map(averageColor);
+  }
+
+  function buildPalette(frames, maxColors, transparent) {
+    const budget = Math.max(2, Math.min(transparent ? 255 : 256, maxColors));
+    const samples = collectSamples(frames, 0, 0, 7);
+    const colors = medianCut(samples, budget);
+    const unique = [];
+    const seen = new Set();
+    for (let i = 0; i < colors.length; i++) {
+      const key = (colors[i][0] << 16) | (colors[i][1] << 8) | colors[i][2];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(colors[i]);
+    }
+    const palette = transparent ? [[0, 0, 0]].concat(unique) : unique.slice();
+    while (palette.length < 2) palette.push([0, 0, 0]);
+    return palette;
+  }
+
+  function nearestIndex(palette, lookup, start, r, g, b) {
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    const cached = lookup[key];
+    if (cached >= 0) return cached;
+    let best = start, bestDistance = Infinity;
+    for (let i = start; i < palette.length; i++) {
+      const dr = palette[i][0] - r, dg = palette[i][1] - g, db = palette[i][2] - b;
+      const distance = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11;
+      if (distance < bestDistance) { bestDistance = distance; best = i; }
+    }
+    lookup[key] = best;
+    return best;
+  }
+
+  function mapFrame(data, palette, lookup, transparent) {
+    const start = transparent ? 1 : 0;
+    const indices = new Uint8Array(data.length / 4);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      if (transparent && data[i + 3] < 128) { indices[p] = 0; continue; }
+      indices[p] = nearestIndex(palette, lookup, start, data[i], data[i + 1], data[i + 2]);
+    }
+    return indices;
+  }
+
+  function lzwEncode(indices, minCodeSize) {
+    const clearCode = 1 << minCodeSize;
+    const endCode = clearCode + 1;
+    let codeSize = minCodeSize + 1;
+    let next = clearCode + 2;
+    let dictionary = new Map();
+
+    const bytes = [];
+    let bitBuffer = 0, bitCount = 0;
+    function emit(code) {
+      bitBuffer |= code << bitCount;
+      bitCount += codeSize;
+      while (bitCount >= 8) {
+        bytes.push(bitBuffer & 0xff);
+        bitBuffer >>= 8;
+        bitCount -= 8;
+      }
+    }
+
+    emit(clearCode);
+    let prefix = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+      const suffix = indices[i];
+      const key = (prefix << 8) | suffix;
+      const found = dictionary.get(key);
+      if (found !== undefined) {
+        prefix = found;
+        continue;
+      }
+      emit(prefix);
+      if (next < 4096) {
+        dictionary.set(key, next);
+        next++;
+        if (next === (1 << codeSize) + 1 && codeSize < 12) codeSize++;
+      } else {
+        emit(clearCode);
+        dictionary = new Map();
+        next = clearCode + 2;
+        codeSize = minCodeSize + 1;
+      }
+      prefix = suffix;
+    }
+    emit(prefix);
+    emit(endCode);
+    if (bitCount > 0) bytes.push(bitBuffer & 0xff);
+
+    const blocks = [];
+    for (let i = 0; i < bytes.length; i += 255) {
+      const slice = bytes.slice(i, i + 255);
+      blocks.push(slice.length);
+      for (let k = 0; k < slice.length; k++) blocks.push(slice[k]);
+    }
+    blocks.push(0);
+    return new Uint8Array(blocks);
+  }
+
+  function encode(options) {
+    const width = options.width;
+    const height = options.height;
+    const frames = options.frames;
+    const transparent = options.transparent !== false;
+    const palette = options.palette || buildPalette(frames, options.maxColors || 128, transparent);
+    const lookup = new Int16Array(32768).fill(-1);
+    const defaultDelay = Math.max(1, Math.round(options.delayCs || 8));
+
+    let tableBits = 1;
+    while ((1 << tableBits) < palette.length) tableBits++;
+    if (tableBits > 8) tableBits = 8;
+    const tableSize = 1 << tableBits;
+    const minCodeSize = Math.max(2, tableBits);
+
+    const chunks = [];
+    const header = [];
+    const push = function (array, values) { for (let i = 0; i < values.length; i++) array.push(values[i]); };
+
+    push(header, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    push(header, [width & 0xff, (width >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff]);
+    push(header, [0x80 | ((tableBits - 1) & 7) | (((tableBits - 1) & 7) << 4), 0, 0]);
+    for (let i = 0; i < tableSize; i++) {
+      const color = palette[i] || [0, 0, 0];
+      push(header, [color[0] & 0xff, color[1] & 0xff, color[2] & 0xff]);
+    }
+    if (options.loop !== false) {
+      push(header, [0x21, 0xff, 0x0b]);
+      push(header, [0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30]);
+      push(header, [0x03, 0x01, 0x00, 0x00, 0x00]);
+    }
+    chunks.push(new Uint8Array(header));
+
+    for (let f = 0; f < frames.length; f++) {
+      const indices = mapFrame(frames[f], palette, lookup, transparent);
+      const control = [];
+      push(control, [0x21, 0xf9, 0x04]);
+      const delay = Math.max(1, Math.round(options.delaysCs && options.delaysCs[f] || defaultDelay));
+      push(control, [(transparent ? 0x09 : 0x04), delay & 0xff, (delay >> 8) & 0xff, transparent ? 0 : 0, 0]);
+      push(control, [0x2c, 0, 0, 0, 0, width & 0xff, (width >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff, 0]);
+      push(control, [minCodeSize]);
+      chunks.push(new Uint8Array(control));
+      chunks.push(lzwEncode(indices, minCodeSize));
+      if (options.onProgress) options.onProgress((f + 1) / frames.length);
+    }
+    chunks.push(new Uint8Array([0x3b]));
+    return chunks;
+  }
+
+  function concat(chunks) {
+    let total = 0;
+    for (let i = 0; i < chunks.length; i++) total += chunks[i].length;
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) { out.set(chunks[i], offset); offset += chunks[i].length; }
+    return out;
+  }
+
+  return {
+    buildPalette: buildPalette,
+    medianCut: medianCut,
+    mapFrame: mapFrame,
+    lzwEncode: lzwEncode,
+    encode: encode,
+    concat: concat
+  };
+})();
+
+/* ---------------- sources image, GIF animé et vidéo ---------------- */
+function stopMedia(){
+  clearInterval(MEDIA.timer); MEDIA.timer=0;
+  if(MEDIA.video){
+    MEDIA.video.onended=null; MEDIA.video.onerror=null; MEDIA.video.onloadedmetadata=null;
+    MEDIA.video.pause(); MEDIA.video.removeAttribute('src'); MEDIA.video.load();
+  }
+  if(MEDIA.url)URL.revokeObjectURL(MEDIA.url);
+  MEDIA.type='image'; MEDIA.frames=null; MEDIA.video=null; MEDIA.url=null; MEDIA.duration=0; MEDIA.frameIndex=0;
+  $('mediaControls').style.display='none';
+}
+function loadRasterFile(file,asPattern){
   if(!/^image\//.test(file.type||'')){ toast('Format non accepté (image attendue)'); return }
   const url=URL.createObjectURL(file), im=new Image();
   im.onload=()=>{
     URL.revokeObjectURL(url);
-    if(asPattern) loadPatternFromImage(im,file.name);
+    if(asPattern)loadPatternFromImage(im,file.name);
     else setSource(im,file.name);
   };
   im.onerror=()=>{ URL.revokeObjectURL(url); toast('Lecture impossible') };
   im.src=url;
+}
+function loadFile(file,asPattern){
+  if(MEDIA.recorder||MEDIA.exporting){ toast('Attends la fin de l’export avant de changer de source'); return }
+  if(!file)return;
+  if(asPattern)return loadRasterFile(file,true);
+  const isVideo=/^video\//.test(file.type||'')||/\.(mp4|m4v|mov|webm|ogv|mkv|avi)$/i.test(file.name||'');
+  if(isVideo)return loadVideoFile(file);
+  const isGif=file.type==='image/gif'||/\.gif$/i.test(file.name||'');
+  if(isGif){
+    $('imgTitle').textContent='Decoding GIF…';
+    file.arrayBuffer().then(buf=>{
+      if(MEDIA.exporting||MEDIA.recorder){ toast('Attends la fin de l’export avant de changer de source'); return }
+      const decoded=decodeGif(buf);
+      const frames=decoded.frames.map(f=>({c:f.c,d:f.d||100}));
+      if(frames.length>1)setGifSource(frames,file.name);
+      else setSource(frames[0].c,file.name);
+    }).catch(err=>{ console.warn('GIF',err); loadRasterFile(file,false) });
+    return;
+  }
+  loadRasterFile(file,false);
+}
+function loadVideoFile(file){
+  const video=document.createElement('video'), url=URL.createObjectURL(file);
+  video.muted=true; video.playsInline=true; video.preload='auto';
+  video.onloadedmetadata=()=>{
+    video.onloadedmetadata=null;
+    if(MEDIA.exporting||MEDIA.recorder){ URL.revokeObjectURL(url); toast('Attends la fin de l’export avant de changer de source'); return }
+    stopMedia();
+    MEDIA.type='video'; MEDIA.video=video; MEDIA.url=url; MEDIA.duration=Number.isFinite(video.duration)?video.duration:0;
+    video.loop=true;
+    setSourceData(video,file.name);
+    $('mediaControls').style.display='flex'; $('mediaMax').value='0'; $('imgSave').textContent='Export video';
+    MEDIA.timer=setInterval(()=>{ if(!video.paused&&P.preview)render() },42);
+    video.play().catch(()=>toast('Clique sur la vidéo pour autoriser la lecture'));
+  };
+  video.onerror=()=>{ URL.revokeObjectURL(url); toast('Vidéo illisible ou format non pris en charge') };
+  video.src=url;
+}
+function setGifSource(frames,name){
+  stopMedia();
+  MEDIA.type='gif'; MEDIA.frames=frames; MEDIA.duration=frames.reduce((n,f)=>n+f.d,0); MEDIA.frameIndex=0;
+  setSourceData(frames[0].c,name);
+  $('mediaControls').style.display='flex'; $('mediaMax').value='0'; $('imgSave').textContent='Export GIF';
+  let started=performance.now();
+  MEDIA.timer=setInterval(()=>{
+    if(!MEDIA.duration)return;
+    const t=(performance.now()-started)%MEDIA.duration;
+    let i=0, edge=frames[0].d;
+    while(i<frames.length-1&&t>=edge){ i++; edge+=frames[i].d }
+    if(i!==MEDIA.frameIndex){ MEDIA.frameIndex=i; S.src=frames[i].c; render() }
+  },42);
 }
 function loadPatternFromImage(im,name){
   const W=Math.max(16,Math.min(400,im.naturalWidth)), H=Math.max(16,Math.min(400,Math.round(im.naturalHeight*W/im.naturalWidth)));
@@ -1251,16 +1631,21 @@ function loadPatternFromImage(im,name){
   drawPatternPreview(); render(); toast('Motif chargé : '+name);
 }
 function setSource(im,name){
+  if(MEDIA.recorder||MEDIA.exporting){ toast('Attends la fin de l’export avant de changer de source'); return }
+  stopMedia(); setSourceData(im,name);
+}
+function setSourceData(im,name){
   S.src=im; S.name=name;
-  S.iw=im.naturalWidth||im.width; S.ih=im.naturalHeight||im.height;
+  S.iw=sourceWidth(im); S.ih=sourceHeight(im);
   P.w=S.iw; P.h=S.ih; P.wPct=100; P.hPct=100;
   $('szW').value=P.w; $('szH').value=P.h; $('szWp').value=100; $('szHp').value=100;
   updateSizeCaption();
   $('imgEmpty').style.display='none';
-  $('imgTitle').textContent='Image';
+  $('imgTitle').textContent=MEDIA.type==='video'?'Video':MEDIA.type==='gif'?'Animated GIF':'Image';
+  if(MEDIA.type==='image')$('imgSave').textContent='Save...';
   P.viewZoom=100; $('viewZoom').value=100;
   $('info3').innerHTML=infoText();
-  if(!S.pat) regen(false); else render();
+  if(!S.pat)regen(false); else render();
 }
 function procSource(kind){
   const w=clamp(Math.round(P.w)||746,8,4000), h=clamp(Math.round(P.h)||1145,8,4000);
@@ -1322,7 +1707,7 @@ function currentScale(){
 }
 function render(){
   if(!S.src||!S.pat)return;
-  if(!P.preview){ $('imgTitle').textContent='Preview off'; return }
+  if(!P.preview&&!MEDIA.recorder&&!MEDIA.exporting){ $('imgTitle').textContent='Preview off'; return }
   const t0=performance.now();
   const w=clamp(Math.round(P.w),8,6000), h=clamp(Math.round(P.h),8,6000);
   const spec={irot:0,iflip:false,gray:'lumSD',percep:P.percep,
@@ -1487,13 +1872,103 @@ function download(blob,name){
   document.body.append(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove() },1200);
 }
-function saveImage(){
+async function ensurePattern(){
+  while(S.busy)await new Promise(r=>setTimeout(r,30));
+  if(!S.pat)await regen(false);
+  return !!S.pat;
+}
+async function saveImage(){
   if(!S.src){ toast('Aucune image'); return }
+  if(!S.pat&&!(await ensurePattern())){ toast('Motif indisponible'); return }
+  if(MEDIA.type==='gif')return saveGif();
+  if(MEDIA.type==='video')return saveVideo();
   $('imgCanvas').toBlob(b=>{
     if(!b){ toast('Export impossible'); return }
     download(b,(S.name||'stochaster').replace(/\.[^.]+$/,'')+'_stochaster.png');
     toast('Image enregistrée');
   },'image/png');
+}
+async function saveGif(){
+  const frames=MEDIA.frames;
+  if(!frames||!frames.length){ toast('Aucune image GIF'); return }
+  if(MEDIA.exporting){ toast('Export GIF déjà en cours'); return }
+  MEDIA.exporting=true;
+  const maxSec=Number($('mediaMax').value)||0;
+  const limit=Math.min(MEDIA.duration,maxSec>0?maxSec*1000:Infinity);
+  const source=S.src, oldIndex=MEDIA.frameIndex, wasPreview=P.preview;
+  clearInterval(MEDIA.timer); MEDIA.timer=0; P.preview=true;
+  const pixels=[], delays=[]; let elapsed=0, width=0, height=0;
+  try{
+    for(let i=0;i<frames.length&&elapsed<limit;i++){
+      const d=Math.max(10,frames[i].d||100), kept=Math.min(d,limit-elapsed);
+      if(kept<=0)break;
+      S.src=frames[i].c; MEDIA.frameIndex=i; render();
+      const c=$('imgCanvas'); width=c.width; height=c.height;
+      pixels.push(c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data);
+      delays.push(Math.max(1,Math.round(kept/10))); elapsed+=d;
+      if(i%6===5)await new Promise(r=>setTimeout(r,0));
+    }
+  }finally{
+    MEDIA.exporting=false;
+    S.src=source; MEDIA.frameIndex=oldIndex; P.preview=wasPreview;
+    if(wasPreview){ render(); let started=performance.now();
+      MEDIA.timer=setInterval(()=>{
+        const t=(performance.now()-started)%MEDIA.duration; let i=0, edge=frames[0].d;
+        while(i<frames.length-1&&t>=edge){ i++; edge+=frames[i].d }
+        if(i!==MEDIA.frameIndex){ MEDIA.frameIndex=i; S.src=frames[i].c; render() }
+      },42);
+    }
+  }
+  if(!pixels.length){ toast('GIF vide'); return }
+  const chunks=GIFEncoder.encode({width,height,frames:pixels,delaysCs:delays,loop:false,maxColors:255,transparent:true});
+  const blob=new Blob([GIFEncoder.concat(chunks)],{type:'image/gif'});
+  download(blob,(S.name||'stochaster').replace(/\.[^.]+$/,'')+'_stochaster.gif');
+  toast('GIF animé enregistré · '+pixels.length+' images');
+}
+async function saveVideo(){
+  const video=MEDIA.video, canvas=$('imgCanvas');
+  if(!video||!canvas.captureStream||!window.MediaRecorder){ toast('Export vidéo WebM indisponible dans ce navigateur'); return }
+  if(MEDIA.recorder){ MEDIA.recorder.stop(); return }
+  const maxSec=Number($('mediaMax').value)||0;
+  const limit=Math.min(MEDIA.duration||Infinity,maxSec>0?maxSec:Infinity);
+  const oldLoop=video.loop, oldTime=video.currentTime, wasPaused=video.paused, wasPreview=P.preview;
+  clearInterval(MEDIA.timer); MEDIA.timer=0; P.preview=true;
+  video.pause(); video.loop=false; video.currentTime=0; render();
+  const stream=canvas.captureStream(24), chunks=[];
+  const candidates=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+  const mime=typeof MediaRecorder.isTypeSupported==='function'?candidates.find(x=>MediaRecorder.isTypeSupported(x)):'';
+  let recorder;
+  try{ recorder=new MediaRecorder(stream,mime?{mimeType:mime}:{}); }
+  catch(e){
+    stream.getTracks().forEach(t=>t.stop()); video.loop=oldLoop; video.currentTime=oldTime; P.preview=wasPreview;
+    if(!wasPaused)video.play().catch(()=>{});
+    if(wasPreview)render();
+    MEDIA.timer=setInterval(()=>{ if(!video.paused&&P.preview)render() },42);
+    toast('Création vidéo impossible'); return;
+  }
+  MEDIA.recorder=recorder; $('imgSave').textContent='Stop export';
+  let timeout=0, stopping=false;
+  const finish=()=>{ if(stopping)return; stopping=true; clearTimeout(timeout); if(recorder.state!=='inactive')recorder.stop() };
+  recorder.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data) };
+  recorder.onerror=()=>finish();
+  recorder.onstop=()=>{
+    stream.getTracks().forEach(t=>t.stop()); MEDIA.recorder=null; video.onended=null;
+    clearInterval(MEDIA.timer); MEDIA.timer=0;
+    const mediaType=recorder.mimeType||mime||'video/webm', ext=mediaType.includes('mp4')?'mp4':'webm';
+    if(chunks.length)download(new Blob(chunks,{type:mediaType}),(S.name||'stochaster').replace(/\.[^.]+$/,'')+'_stochaster.'+ext);
+    video.loop=oldLoop; video.currentTime=Math.min(oldTime,video.duration||oldTime);
+    P.preview=wasPreview;
+    if(!wasPaused)video.play().catch(()=>{});
+    if(wasPreview)render();
+    MEDIA.timer=setInterval(()=>{ if(!video.paused&&P.preview)render() },42);
+    $('imgSave').textContent='Export video';
+    toast(chunks.length?'Vidéo exportée (sans audio)':'Aucune donnée vidéo capturée');
+  };
+  video.onended=finish;
+  recorder.start(250);
+  MEDIA.timer=setInterval(()=>{ if(!video.paused)render() },42);
+  video.play().catch(finish);
+  if(Number.isFinite(limit)&&limit>0)timeout=setTimeout(finish,limit*1000);
 }
 async function runBatch(files){
   const list=Array.from(files||[]).filter(f=>/^image\//.test(f.type||''));

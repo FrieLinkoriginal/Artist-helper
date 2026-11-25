@@ -169,6 +169,16 @@
       <div id="controls"></div>
       <div class="group">
         <div class="glabel">Export</div>
+        <div class="stack" style="margin-bottom:11px">
+          <div class="fld"><label for="exportResolution">Résolution · grand côté</label>
+            <select id="exportResolution" style="width:100%;border:1px solid var(--line);border-radius:9px;padding:8px;background:#fcfbf9;color:var(--txt);font:inherit">
+              <option value="current">Comme l’aperçu</option><option value="720">720 px</option><option value="1080" selected>1080 px</option><option value="1440">1440 px</option><option value="2160">2160 px</option>
+            </select>
+          </div>
+          <div class="fld"><label for="exportQuality">Qualité vidéo · débit <span id="qualityValue" style="float:right">14 Mb/s</span></label>
+            <input type="range" id="exportQuality" min="2" max="30" step="1" value="14" style="width:100%">
+          </div>
+        </div>
         <div class="btns">
           <button class="btn primary" id="expWebm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3z"/></svg>
@@ -460,6 +470,8 @@ const shell = {
   current: null,
   instance: null,
   canvas: null,
+  exportCanvas: null,
+  exportCtx: null,
   paused: false,
   raf: 0,
   last: 0,
@@ -506,7 +518,11 @@ function mountGenerator(id){
     shell.last = now;
     shell.fps = shell.fps * .95 + (1 / Math.max(.001, dt)) * .05;
     if (!shell.paused) shell.instance.frame(Math.max(0, (now - shell.t0) / 1000), dt);
-    /* capture déterministe : une image encodée par frame dessinée */
+    if (shell.exportCanvas && shell.exportCtx) {
+      shell.exportCtx.clearRect(0,0,shell.exportCanvas.width,shell.exportCanvas.height);
+      shell.exportCtx.drawImage(canvas,0,0,shell.exportCanvas.width,shell.exportCanvas.height);
+    }
+    /* capture déterministe : une image export par frame rendue */
     if (shell.recTrack && shell.recTrack.requestFrame) shell.recTrack.requestFrame();
     $('#status').textContent = `${shell.instance && shell.instance.status ? shell.instance.status() + ' · ' : ''}${Math.round(shell.fps)} fps · ${canvas.width}×${canvas.height}`;
     shell.raf = requestAnimationFrame(loop);
@@ -533,39 +549,55 @@ function sizeCanvas(canvas, gen){
 
 /* ════════════════ exports ════════════════ */
 let recorder = null;
+function exportDimensions(source){
+  const preset=$('#exportResolution').value;
+  if(preset==='current')return {width:source.width,height:source.height};
+  const longSide=+preset,aspect=source.width/Math.max(1,source.height);
+  return aspect>=1?{width:longSide,height:Math.max(1,Math.round(longSide/aspect))}
+    :{width:Math.max(1,Math.round(longSide*aspect)),height:longSide};
+}
+function makeExportCanvas(source){
+  const dim=exportDimensions(source),out=document.createElement('canvas');
+  out.width=dim.width;out.height=dim.height;
+  const c=out.getContext('2d');c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';
+  c.drawImage(source,0,0,out.width,out.height);
+  return out;
+}
+function saveBlob(blob,name){
+  if(!blob){alert('Export impossible');return}
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+$('#exportQuality').addEventListener('input',e=>$('#qualityValue').textContent=e.target.value+' Mb/s');
 $('#expPng').onclick = () => {
-  const a = document.createElement('a');
-  a.download = `paper-free-${shell.current.id}.png`;
-  a.href = shell.canvas.toDataURL('image/png');
-  a.click();
+  if(!shell.canvas||!shell.current)return;
+  const out=makeExportCanvas(shell.canvas),name=`paper-free-${shell.current.id}-${out.width}x${out.height}.png`;
+  out.toBlob(blob=>saveBlob(blob,name),'image/png');
 };
 $('#expWebm').onclick = () => {
   if (recorder) return;
-  const cv = shell.canvas;
-  const stream = cv.captureStream(0);
-  const mime = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
-    .find(m => MediaRecorder.isTypeSupported(m));
-  if (!mime) { alert('MediaRecorder non supporté.'); return; }
-  const chunks = [];
-  shell.recTrack = stream.getVideoTracks()[0] || null;
-  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 14_000_000 });
-  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => {
-    const blob = new Blob(chunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.download = `paper-free-${shell.current.id}.webm`;
-    a.href = url; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    $('#rec').classList.remove('on');
-    shell.recTrack = null;
-    recorder = null;
+  if(!shell.canvas||!shell.current||!window.MediaRecorder||!shell.canvas.captureStream){alert('Enregistrement vidéo non supporté.');return}
+  const genId=shell.current.id,dur=shell.current.exportSeconds||6;
+  const dim=exportDimensions(shell.canvas);
+  shell.exportCanvas=document.createElement('canvas');
+  shell.exportCanvas.width=dim.width;shell.exportCanvas.height=dim.height;
+  shell.exportCtx=shell.exportCanvas.getContext('2d');
+  shell.exportCtx.imageSmoothingEnabled=true;shell.exportCtx.imageSmoothingQuality='high';
+  shell.exportCtx.drawImage(shell.canvas,0,0,dim.width,dim.height);
+  const stream=shell.exportCanvas.captureStream(30);
+  const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']
+    .find(m=>typeof MediaRecorder.isTypeSupported!=='function'||MediaRecorder.isTypeSupported(m));
+  const chunks=[];shell.recTrack=stream.getVideoTracks()[0]||null;
+  try{recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:+$('#exportQuality').value*1_000_000}:{})}
+  catch(e){stream.getTracks().forEach(t=>t.stop());shell.recTrack=null;shell.exportCanvas=null;shell.exportCtx=null;alert('Création de la vidéo impossible.');return}
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  recorder.onstop=()=>{
+    saveBlob(new Blob(chunks,{type:recorder.mimeType||'video/webm'}),`paper-free-${genId}-${dim.width}x${dim.height}.webm`);
+    $('#rec').classList.remove('on');shell.recTrack=null;shell.exportCanvas=null;shell.exportCtx=null;recorder=null;
   };
-  const dur = shell.current.exportSeconds || 6;
-  $('#rec').classList.add('on');
-  $('#recTxt').textContent = `Enregistrement ${dur.toFixed(1)} s…`;
+  $('#rec').classList.add('on');$('#recTxt').textContent=`Enregistrement ${dur.toFixed(1)} s · ${dim.width}×${dim.height}`;
   recorder.start();
-  setTimeout(() => { if (recorder) recorder.stop(); }, dur * 1000);
+  setTimeout(()=>{if(recorder)recorder.stop()},dur*1000);
 };
 $('#btnPause').onclick = () => {
   shell.paused = !shell.paused;
