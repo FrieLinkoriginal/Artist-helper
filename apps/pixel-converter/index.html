@@ -802,6 +802,7 @@ function dialogLayout(W,H,s){
   return {x,y,w,h,k,fpx,lh,lines,pad,iconS,bodyH};
 }
 function drawDialog(c,W,H,s){
+  dlgRect=null;
   const style=$('dstyle').value;
   c.save(); c.textAlign='left'; c.textBaseline='alphabetic';
   if(style==='bsod'){
@@ -834,7 +835,7 @@ function drawDialog(c,W,H,s){
   }
   /* --- fenêtre Windows --- */
   const L=dialogLayout(W,H,s);
-  dlgRect={x:L.x,y:L.y,w:L.w,h:L.h};
+  dlgRect={x:L.x/s,y:L.y/s,w:L.w/s,h:L.h/s};
   bevel(c,L.x,L.y,L.w,L.h,false);
   navGrad(c,L.x+3,L.y+3,L.w-6,Math.round(18*L.k));
   const T=th();
@@ -1013,6 +1014,237 @@ function frameDesktop(base,s){
   return c;
 }
 
+const GIFEncoder = (function () {
+
+  function collectSamples(frames, width, height, step) {
+    const samples = [];
+    const totalPixels=frames.reduce((n,data)=>n+data.length/4,0);
+    const stride=Math.max(step,Math.ceil(totalPixels/60000));
+    for (let f = 0; f < frames.length; f++) {
+      const data = frames[f];
+      for (let i = 0; i < data.length; i += 4 * stride) {
+        if (data[i + 3] < 128) continue;
+        samples.push([data[i], data[i + 1], data[i + 2]]);
+      }
+    }
+    return samples;
+  }
+
+  function boxOf(colors) {
+    const box = { colors: colors, min: [255, 255, 255], max: [0, 0, 0] };
+    for (let i = 0; i < colors.length; i++) {
+      for (let channel = 0; channel < 3; channel++) {
+        const value = colors[i][channel];
+        if (value < box.min[channel]) box.min[channel] = value;
+        if (value > box.max[channel]) box.max[channel] = value;
+      }
+    }
+    box.range = Math.max(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]);
+    return box;
+  }
+
+  function splitBox(box) {
+    let channel = 0, best = -1;
+    for (let i = 0; i < 3; i++) {
+      const span = box.max[i] - box.min[i];
+      if (span > best) { best = span; channel = i; }
+    }
+    const sorted = box.colors.slice().sort(function (a, b) { return a[channel] - b[channel]; });
+    const middle = Math.floor(sorted.length / 2);
+    return [boxOf(sorted.slice(0, middle)), boxOf(sorted.slice(middle))];
+  }
+
+  function averageColor(box) {
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < box.colors.length; i++) {
+      r += box.colors[i][0]; g += box.colors[i][1]; b += box.colors[i][2];
+    }
+    const count = Math.max(1, box.colors.length);
+    return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+  }
+
+  function medianCut(samples, maxColors) {
+    if (!samples.length) return [[0, 0, 0]];
+    let boxes = [boxOf(samples)];
+    while (boxes.length < maxColors) {
+      let target = -1, score = -1;
+      for (let i = 0; i < boxes.length; i++) {
+        if (boxes[i].colors.length < 2 || boxes[i].range === 0) continue;
+        const value = boxes[i].range * Math.log(boxes[i].colors.length + 1);
+        if (value > score) { score = value; target = i; }
+      }
+      if (target < 0) break;
+      const pair = splitBox(boxes[target]);
+      boxes.splice(target, 1, pair[0], pair[1]);
+    }
+    return boxes.map(averageColor);
+  }
+
+  function buildPalette(frames, maxColors, transparent) {
+    const budget = Math.max(2, Math.min(transparent ? 255 : 256, maxColors));
+    const samples = collectSamples(frames, 0, 0, 7);
+    const colors = medianCut(samples, budget);
+    const unique = [];
+    const seen = new Set();
+    for (let i = 0; i < colors.length; i++) {
+      const key = (colors[i][0] << 16) | (colors[i][1] << 8) | colors[i][2];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(colors[i]);
+    }
+    const palette = transparent ? [[0, 0, 0]].concat(unique) : unique.slice();
+    while (palette.length < 2) palette.push([0, 0, 0]);
+    return palette;
+  }
+
+  function nearestIndex(palette, lookup, start, r, g, b) {
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    const cached = lookup[key];
+    if (cached >= 0) return cached;
+    let best = start, bestDistance = Infinity;
+    for (let i = start; i < palette.length; i++) {
+      const dr = palette[i][0] - r, dg = palette[i][1] - g, db = palette[i][2] - b;
+      const distance = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11;
+      if (distance < bestDistance) { bestDistance = distance; best = i; }
+    }
+    lookup[key] = best;
+    return best;
+  }
+
+  function mapFrame(data, palette, lookup, transparent) {
+    const start = transparent ? 1 : 0;
+    const indices = new Uint8Array(data.length / 4);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      if (transparent && data[i + 3] < 128) { indices[p] = 0; continue; }
+      indices[p] = nearestIndex(palette, lookup, start, data[i], data[i + 1], data[i + 2]);
+    }
+    return indices;
+  }
+
+  function lzwEncode(indices, minCodeSize) {
+    const clearCode = 1 << minCodeSize;
+    const endCode = clearCode + 1;
+    let codeSize = minCodeSize + 1;
+    let next = clearCode + 2;
+    let dictionary = new Map();
+
+    const bytes = [];
+    let bitBuffer = 0, bitCount = 0;
+    function emit(code) {
+      bitBuffer |= code << bitCount;
+      bitCount += codeSize;
+      while (bitCount >= 8) {
+        bytes.push(bitBuffer & 0xff);
+        bitBuffer >>= 8;
+        bitCount -= 8;
+      }
+    }
+
+    emit(clearCode);
+    let prefix = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+      const suffix = indices[i];
+      const key = (prefix << 8) | suffix;
+      const found = dictionary.get(key);
+      if (found !== undefined) {
+        prefix = found;
+        continue;
+      }
+      emit(prefix);
+      if (next < 4096) {
+        dictionary.set(key, next);
+        next++;
+        if (next === (1 << codeSize) + 1 && codeSize < 12) codeSize++;
+      } else {
+        emit(clearCode);
+        dictionary = new Map();
+        next = clearCode + 2;
+        codeSize = minCodeSize + 1;
+      }
+      prefix = suffix;
+    }
+    emit(prefix);
+    emit(endCode);
+    if (bitCount > 0) bytes.push(bitBuffer & 0xff);
+
+    const blocks = [];
+    for (let i = 0; i < bytes.length; i += 255) {
+      const slice = bytes.slice(i, i + 255);
+      blocks.push(slice.length);
+      for (let k = 0; k < slice.length; k++) blocks.push(slice[k]);
+    }
+    blocks.push(0);
+    return new Uint8Array(blocks);
+  }
+
+  function encode(options) {
+    const width = options.width;
+    const height = options.height;
+    const frames = options.frames;
+    const transparent = options.transparent !== false;
+    const palette = options.palette || buildPalette(frames, options.maxColors || 128, transparent);
+    const lookup = new Int16Array(32768).fill(-1);
+    const defaultDelay = Math.max(2, Math.round(options.delayCs || 8));
+
+    let tableBits = 1;
+    while ((1 << tableBits) < palette.length) tableBits++;
+    if (tableBits > 8) tableBits = 8;
+    const tableSize = 1 << tableBits;
+    const minCodeSize = Math.max(2, tableBits);
+
+    const chunks = [];
+    const header = [];
+    const push = function (array, values) { for (let i = 0; i < values.length; i++) array.push(values[i]); };
+
+    push(header, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    push(header, [width & 0xff, (width >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff]);
+    push(header, [0x80 | ((tableBits - 1) & 7) | (((tableBits - 1) & 7) << 4), 0, 0]);
+    for (let i = 0; i < tableSize; i++) {
+      const color = palette[i] || [0, 0, 0];
+      push(header, [color[0] & 0xff, color[1] & 0xff, color[2] & 0xff]);
+    }
+    if (options.loop !== false) {
+      push(header, [0x21, 0xff, 0x0b]);
+      push(header, [0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30]);
+      push(header, [0x03, 0x01, 0x00, 0x00, 0x00]);
+    }
+    chunks.push(new Uint8Array(header));
+
+    for (let f = 0; f < frames.length; f++) {
+      const indices = mapFrame(frames[f], palette, lookup, transparent);
+      const control = [];
+      push(control, [0x21, 0xf9, 0x04]);
+      const delay = Math.max(2, Math.round(options.delaysCs && options.delaysCs[f] || defaultDelay));
+      push(control, [(transparent ? 0x09 : 0x04), delay & 0xff, (delay >> 8) & 0xff, transparent ? 0 : 0, 0]);
+      push(control, [0x2c, 0, 0, 0, 0, width & 0xff, (width >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff, 0]);
+      push(control, [minCodeSize]);
+      chunks.push(new Uint8Array(control));
+      chunks.push(lzwEncode(indices, minCodeSize));
+      if (options.onProgress) options.onProgress((f + 1) / frames.length);
+    }
+    chunks.push(new Uint8Array([0x3b]));
+    return chunks;
+  }
+
+  function concat(chunks) {
+    let total = 0;
+    for (let i = 0; i < chunks.length; i++) total += chunks[i].length;
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) { out.set(chunks[i], offset); offset += chunks[i].length; }
+    return out;
+  }
+
+  return {
+    buildPalette: buildPalette,
+    medianCut: medianCut,
+    mapFrame: mapFrame,
+    lzwEncode: lzwEncode,
+    encode: encode,
+    concat: concat
+  };
+})();
+
 /* ---------------- composition ---------------- */
 let PREVIEW_SCALE=1;
 function compose(scale,original){
@@ -1042,7 +1274,44 @@ function saveAs(url,name){
   const a=document.createElement('a');
   a.href=url; a.download=name; document.body.append(a); a.click(); a.remove();
 }
+async function exportGif(download=true){
+  const v=vid, sourceFrames=v&&v._gifFrames;
+  if(!v||!sourceFrames||!sourceFrames.length)throw new Error('Aucune animation GIF à exporter');
+  const wasPlaying=!v.paused, wasTime=v.currentTime*1000, wasLoop=v.loop;
+  v.pause();
+  const requested=Number($('videoMaxSeconds').value);
+  const limitMs=Math.min(v.duration*1000,requested>0?requested*1000:Infinity);
+  const frameData=[], delaysCs=[];
+  let elapsed=0, width=0, height=0;
+  try{
+    for(let i=0;i<sourceFrames.length&&elapsed<limitMs;i++){
+      const duration=Math.max(20,sourceFrames[i].d||100);
+      const frameDuration=Math.min(duration,limitMs-elapsed);
+      if(frameDuration<=0)break;
+      v.currentTime=elapsed/1000;
+      const cv=compose(clamp(+S.scale,1,8),false);
+      width=cv.width; height=cv.height;
+      frameData.push(cv.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data);
+      delaysCs.push(Math.max(2,Math.round(frameDuration/10)));
+      elapsed+=duration;
+      if(i%8===7)await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  } finally {
+    v.loop=wasLoop;
+    v.currentTime=wasTime/1000;
+    if(wasPlaying)v.play().catch(()=>{});
+    render();
+  }
+  const chunks=GIFEncoder.encode({width,height,frames:frameData,delaysCs,loop:false,maxColors:255,transparent:true});
+  const blob=new Blob([GIFEncoder.concat(chunks)],{type:'image/gif'});
+  const url=URL.createObjectURL(blob);
+  const name=fileName().replace(/\.(png|jpg)$/i,'.gif');
+  if(download){ saveAs(url,name); setTimeout(()=>URL.revokeObjectURL(url),60000) }
+  $('st').textContent=`Export GIF animé — ${frameData.length} images — ${name}`;
+  return {url,blob,frames:frameData.length};
+}
 async function doExport(download=true){
+  if(vid===src&&vid&&vid._isGif)return exportGif(download);
   const s=clamp(+S.scale,1,8);
   const cv=compose(s,false);
   const jpeg=S.efmt==='jpeg';
@@ -1224,15 +1493,15 @@ function bindCanvas(){
     if(showOriginal)return;
     if(e.button===2)return;
     const p=artPoint(e);
-    if($('dr').checked){
-      e.preventDefault(); out.setPointerCapture(e.pointerId);
-      snapDl(); lastCell=cellAt(e); stamp(lastCell[0],lastCell[1]); schedule(); return;
-    }
-    // dialogue ?
+    // Priorité au dialogue : il reste déplaçable même lorsque le dessin est actif.
     if(S.dlg&&dlgRect&&p.x>=dlgRect.x&&p.x<=dlgRect.x+dlgRect.w&&p.y>=dlgRect.y&&p.y<=dlgRect.y+dlgRect.h){
       dragMode='dlg';
       dragStart={px:p.x,py:p.y,dx:+$('dx').value,dy:+$('dy').value,w:dlgRect.w,h:dlgRect.h};
       out.setPointerCapture(e.pointerId); out.classList.add('pan'); return;
+    }
+    if($('dr').checked){
+      e.preventDefault(); out.setPointerCapture(e.pointerId);
+      snapDl(); lastCell=cellAt(e); stamp(lastCell[0],lastCell[1]); schedule(); return;
     }
     dragMode='pan';
     dragStart={px:e.clientX,py:e.clientY,ox:S.ox,oy:S.oy};
@@ -1258,7 +1527,7 @@ function bindCanvas(){
     const c=cellAt(e);
     lineTo(lastCell,c); lastCell=c; schedule();
   });
-  ['pointerup','pointercancel','pointerleave'].forEach(t=>out.addEventListener(t,()=>{
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>out.addEventListener(t,()=>{
     lastCell=null; dragMode=null; out.classList.remove('pan'); saveS();
   }));
   out.addEventListener('contextmenu',e=>e.preventDefault());
@@ -1520,7 +1789,7 @@ function gifPlayer(fr,W,H){
     if(t>=T){ if(c.loop)t%=T; else { t=T; pl=false; c.ended=true; draw(); ev('pause'); ev('ended'); return } }
     draw();
   };
-  Object.assign(c,{playbackRate:1,loop:true,ended:false,muted:true,duration:T/1000,_sync:sync,load(){}});
+  Object.assign(c,{playbackRate:1,loop:true,ended:false,muted:true,duration:T/1000,_sync:sync,_gifFrames:fr,_isGif:true,load(){}});
   Object.defineProperty(c,'currentTime',{get(){ sync(); return t/1000 },set(v){ sync(); t=Math.max(0,Math.min(T,v*1000)); c.ended=false; last=performance.now(); draw(); ev('seeked') }});
   Object.defineProperty(c,'paused',{get(){ return !pl }});
   c.play=()=>{ if(pl)return Promise.resolve(); if(c.ended||t>=T){ t=0; c.ended=false } pl=true; last=performance.now(); ev('play'); return Promise.resolve() };

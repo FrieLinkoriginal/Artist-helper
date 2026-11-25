@@ -295,9 +295,15 @@ window.addEventListener('resize', updateCarousel3D);
 
 // Wheel and pointer gestures scroll the cover-flow rail without stealing card clicks.
 rail.addEventListener('wheel', event => {
-  if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+  const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+  if (!delta || rail.scrollWidth <= rail.clientWidth) return;
+  const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+    : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? rail.clientWidth : 1;
+  const max = rail.scrollWidth - rail.clientWidth;
+  const next = Math.max(0, Math.min(max, rail.scrollLeft + delta * multiplier));
+  if (next !== rail.scrollLeft) {
     event.preventDefault();
-    rail.scrollLeft += event.deltaY;
+    rail.scrollLeft = next;
   }
 }, { passive: false });
 rail.addEventListener('pointerdown', event => {

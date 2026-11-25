@@ -167,6 +167,15 @@ label.check input{accent-color:var(--acc)}
           <input type="range" id="rngRef" min="0" max="100" step="1" value="35">
         </div>
         <label class="check"><input type="checkbox" id="chkRef"> afficher l'image active en fond</label>
+        <div style="border-top:1px solid var(--line);margin:10px 0 8px"></div>
+        <div class="ctrl">
+          <div class="lab"><span>Tolérance du fond uni</span><span id="outBgTolerance">35</span></div>
+          <input type="range" id="rngBgTolerance" min="0" max="100" step="1" value="35">
+        </div>
+        <button id="btnRemoveBg" class="ghost" style="width:100%;margin-top:5px">✦ Retirer le fond</button>
+        <label class="check"><input type="checkbox" id="chkAutoBg" checked> détourer avant l’auto-puppet</label>
+        <button id="btnAutoPuppet" class="primary" style="width:100%;margin-top:5px">🪄 Auto-puppet · détecter les membres</button>
+        <p class="hint" style="margin-top:7px">Le détourage cible les fonds unis; l’auto-rig propose tête, torse, bras et jambes, à ajuster ensuite manuellement.</p>
       </div>
     </div>
 
@@ -1360,6 +1369,119 @@ function loadImages(files) {
   for (let i = 0; i < files.length; i++) {
     if (/^image\//.test(files[i].type)) loadImage(files[i]);
   }
+}
+
+function removeFlatBackground(imageCanvas, tolerance) {
+  const width = imageCanvas.width, height = imageCanvas.height;
+  if (width * height > 8000000) { toast('Image trop grande pour le détourage automatique (8 Mpx max)'); return false; }
+  const imageCtx = imageCanvas.getContext('2d', { willReadFrequently: true });
+  const frame = imageCtx.getImageData(0, 0, width, height), data = frame.data;
+  const samples = [];
+  const stride = Math.max(1, Math.floor(Math.min(width, height) / 80));
+  [[0,0],[width-1,0],[0,height-1],[width-1,height-1]].forEach(function (corner) {
+    for (let d = 0; d < 3; d++) {
+      const x = corner[0] === 0 ? Math.min(width-1,d*stride) : Math.max(0,width-1-d*stride);
+      const y = corner[1] === 0 ? Math.min(height-1,d*stride) : Math.max(0,height-1-d*stride);
+      const p = (y * width + x) * 4;
+      if (data[p+3] > 16) samples.push([data[p],data[p+1],data[p+2]]);
+    }
+  });
+  if (!samples.length) return false;
+  const bg = [0,1,2].map(function (channel) {
+    const values = samples.map(function (v) { return v[channel]; }).sort(function (a,b) { return a-b; });
+    return values[Math.floor(values.length/2)];
+  });
+  const threshold = 18 + Math.round(tolerance * 2.15), threshold2 = threshold * threshold;
+  const total = width * height, queue = new Int32Array(total);
+  let head = 0, tail = 0;
+  function enqueue(index) {
+    const p = index * 4;
+    if (data[p+3] < 16) return;
+    const dr=data[p]-bg[0],dg=data[p+1]-bg[1],db=data[p+2]-bg[2];
+    if (dr*dr+dg*dg+db*db <= threshold2) { data[p+3]=0; queue[tail++]=index; }
+  }
+  for (let x=0;x<width;x++) { enqueue(x); if(height>1)enqueue((height-1)*width+x); }
+  for (let y=1;y<height-1;y++) { enqueue(y*width); if(width>1)enqueue(y*width+width-1); }
+  while(head<tail) {
+    const at=queue[head++], x=at%width, y=(at/width)|0;
+    if(x>0)enqueue(at-1); if(x+1<width)enqueue(at+1);
+    if(y>0)enqueue(at-width); if(y+1<height)enqueue(at+width);
+  }
+  imageCtx.putImageData(frame,0,0);
+  return tail > 0;
+}
+
+function removeActiveBackground(silent) {
+  if (!app.active) { if(!silent)toast('Ouvrez d’abord une image'); return false; }
+  const tolerance=+$('rngBgTolerance').value;
+  const removed=removeFlatBackground(app.active.canvas,tolerance);
+  if (!removed) { if(!silent)toast('Aucun fond uni détecté sur les bords'); return false; }
+  app.image=app.active.canvas;
+  app.active.thumb=makeThumb(app.active.canvas);
+  refreshImages();
+  if(!silent)toast('Fond uni supprimé · vous pouvez maintenant découper les membres');
+  return true;
+}
+
+function capsulePoints(cx, cy, length, thickness, angle, steps) {
+  const pts=[], radius=thickness/2, half=Math.max(0,length/2-radius), count=steps||8;
+  for(let i=0;i<=count;i++){const a=angle-Math.PI/2+Math.PI*i/count;pts.push({x:cx+Math.cos(angle)*half+Math.cos(a)*radius,y:cy+Math.sin(angle)*half+Math.sin(a)*radius});}
+  for(let i=0;i<=count;i++){const a=angle+Math.PI/2+Math.PI*i/count;pts.push({x:cx-Math.cos(angle)*half+Math.cos(a)*radius,y:cy-Math.sin(angle)*half+Math.sin(a)*radius});}
+  return pts;
+}
+
+function autoPuppet() {
+  if(!app.active||!app.image){toast('Ouvrez d’abord une image');return;}
+  if($('chkAutoBg').checked)removeActiveBackground(true);
+  const source=app.image, width=source.width,height=source.height;
+  const pixels=source.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data;
+  let minX=width,minY=height,maxX=-1,maxY=-1, opaque=0;
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(pixels[(y*width+x)*4+3]>36){opaque++;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}
+  if(maxX<0||opaque<25){toast('Aucun sujet opaque détecté');return;}
+  const w=maxX-minX+1,h=maxY-minY+1,cx=(minX+maxX)/2;
+  if(w<12||h<24){toast('Sujet trop petit pour créer une marionnette');return;}
+  const made=[];
+  /* Remplace la copie entière créée lors de l’import, si elle est encore intacte. */
+  scene.parts.slice().forEach(function(part){
+    const state=part.states[0];
+    if(part.name===app.active.name+' 1'&&part.states.length===1&&state&&state.imgX===0&&state.imgY===0&&state.w===width&&state.h===height)deletePart(part);
+  });
+  function add(name,points,parentName,jointX,jointY){
+    const part=createPart(points,name);if(!part)return null;made.push({part,parentName,jointX,jointY});return part;
+  }
+  const torsoTop=minY+h*.25, torsoBottom=minY+h*.61, torsoW=w*.34;
+  const torso=add('Torse',[
+    {x:cx-torsoW*.42,y:torsoTop},{x:cx+torsoW*.42,y:torsoTop},
+    {x:cx+torsoW*.5,y:torsoTop+h*.13},{x:cx+torsoW*.42,y:torsoBottom},
+    {x:cx-torsoW*.42,y:torsoBottom},{x:cx-torsoW*.5,y:torsoTop+h*.13}
+  ],null,0,0);
+  const headR=Math.max(w*.105,Math.min(h*.105,w*.2)), headY=minY+h*.14;
+  const headPts=[];for(let i=0;i<16;i++){const a=i*Math.PI*2/16;headPts.push({x:cx+Math.cos(a)*headR,y:headY+Math.sin(a)*headR*1.1});}
+  add('Tête',headPts,'Torse',cx,headY+headR*.75);
+  const shoulderY=torsoTop+h*.04, hipY=torsoBottom-h*.02;
+  [-1,1].forEach(function(side){
+    const shoulderX=cx+side*torsoW*.48, elbowX=cx+side*w*.34, elbowY=minY+h*.43, handX=cx+side*w*.46, handY=minY+h*.55;
+    const upper=capsulePoints((shoulderX+elbowX)/2,(shoulderY+elbowY)/2,Math.hypot(elbowX-shoulderX,elbowY-shoulderY),w*.105,Math.atan2(elbowY-shoulderY,elbowX-shoulderX));
+    add(side<0?'Bras gauche':'Bras droit',upper,'Torse',shoulderX,shoulderY);
+    const lower=capsulePoints((elbowX+handX)/2,(elbowY+handY)/2,Math.hypot(handX-elbowX,handY-elbowY),w*.085,Math.atan2(handY-elbowY,handX-elbowX));
+    add(side<0?'Avant-bras gauche':'Avant-bras droit',lower,side<0?'Bras gauche':'Bras droit',elbowX,elbowY);
+    const kneeX=cx+side*w*.13,kneeY=minY+h*.79,footX=cx+side*w*.17,footY=maxY;
+    const thigh=capsulePoints((cx+side*w*.12+kneeX)/2,(hipY+kneeY)/2,Math.hypot(kneeX-(cx+side*w*.12),kneeY-hipY),w*.14,Math.atan2(kneeY-hipY,side*w*.02));
+    add(side<0?'Cuisse gauche':'Cuisse droite',thigh,'Torse',cx+side*w*.12,hipY);
+    const shin=capsulePoints((kneeX+footX)/2,(kneeY+footY)/2,Math.hypot(footX-kneeX,footY-kneeY),w*.095,Math.atan2(footY-kneeY,footX-kneeX));
+    add(side<0?'Jambe gauche':'Jambe droite',shin,side<0?'Cuisse gauche':'Cuisse droite',kneeX,kneeY);
+  });
+  if(!made.length){toast('Impossible de créer la marionnette');return;}
+  const byName={};made.forEach(function(item){byName[item.part.name]=item.part;});
+  made.forEach(function(item){
+    const parent=byName[item.parentName];if(!parent)return;
+    const wx=app.imageX+item.jointX,wy=app.imageY+item.jointY;
+    attachJoint(item.part,parent,wx,wy);
+  });
+  if(torso)select(torso);
+  setTool('select');
+  fitCamera();
+  toast('Auto-puppet créé · '+made.length+' membres détectés, ajustez les joints et les contours');
 }
 
 /* ------------------------------------------------------------- morceaux */
@@ -2908,6 +3030,9 @@ function bindControls() {
 
   $('btnOpenImage').addEventListener('click', function () { $('imageInput').click(); });
   $('imageInput').addEventListener('change', function () { loadImages(this.files); this.value = ''; });
+  $('rngBgTolerance').addEventListener('input',function(){ $('outBgTolerance').textContent=this.value; });
+  $('btnRemoveBg').addEventListener('click',function(){removeActiveBackground(false);});
+  $('btnAutoPuppet').addEventListener('click',autoPuppet);
   $('btnAddCopy').addEventListener('click', function () { addImageCopy(app.active); });
   $('btnDelImage').addEventListener('click', function () {
     if (!app.active) { toast('Aucune image active'); return; }
