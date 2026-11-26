@@ -1478,7 +1478,7 @@ const PUPPET_MARK_SEQUENCE = [
 function updatePuppetMarkStatus() {
   const count=Object.keys(app.puppetMarkPoints).length, next=PUPPET_MARK_SEQUENCE[count];
   $('puppetMarkStatus').textContent=app.markingPuppet
-    ? 'Point '+(count+1)+' / '+PUPPET_MARK_SEQUENCE.length+' : cliquez sur '+next.label+'. Retour = dernier point · Échap annule tout.'
+    ? 'Point '+(count+1)+' / '+PUPPET_MARK_SEQUENCE.length+' : cliquez sur '+next.label+'. Retour = dernier point · Échap annule · Alt+glisser déplace la vue.'
     : count===PUPPET_MARK_SEQUENCE.length
       ? '14 / 14 points prêts · cliquez sur « Créer l’auto-puppet » pour générer le rig.'
       : count ? count+' / 14 points placés · reprenez le marquage pour compléter le corps.'
@@ -2988,6 +2988,7 @@ function startPan(event) {
 }
 
 function onPointerDown(event) {
+  if(app.markingPuppet&&(event.button===1||event.altKey)){canvas.setPointerCapture(event.pointerId);startPan(event);return;}
   if(app.markingPuppet&&event.button!==2){
     event.preventDefault();canvas.setPointerCapture(event.pointerId);
     const world=pointerWorld(event),x=world.x-app.imageX,y=world.y-app.imageY;
