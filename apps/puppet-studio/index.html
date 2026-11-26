@@ -174,8 +174,13 @@ label.check input{accent-color:var(--acc)}
         </div>
         <button id="btnRemoveBg" class="ghost" style="width:100%;margin-top:5px">✦ Retirer le fond</button>
         <label class="check"><input type="checkbox" id="chkAutoBg" checked> détourer avant l’auto-puppet</label>
-        <button id="btnAutoPuppet" class="primary" style="width:100%;margin-top:5px">🪄 Auto-puppet · détecter les membres</button>
-        <p class="hint" style="margin-top:7px">Le détourage cible les fonds unis; l’auto-rig propose tête, torse, bras et jambes, à ajuster ensuite manuellement.</p>
+        <button id="btnMarkPuppet" class="ghost" style="width:100%;margin-top:7px">📍 Indiquer les parties du corps</button>
+        <div class="row" style="margin-top:5px">
+          <button id="btnAutoPuppet" class="primary" style="flex:2">🪄 Créer l’auto-puppet</button>
+          <button id="btnClearPuppetMarks" class="ghost" title="Effacer les repères">Effacer points</button>
+        </div>
+        <p id="puppetMarkStatus" class="hint" style="margin-top:7px">Repères facultatifs : sommet/base de tête, épaules, coudes, poignets, hanches, genoux et chevilles. Cliquez ensuite sur Créer.</p>
+        <p class="hint" style="margin-top:5px">Le détourage cible les fonds unis; sans repères, le rig est estimé depuis la silhouette.</p>
       </div>
     </div>
 
@@ -1177,6 +1182,9 @@ const app = {
   image: null,
   imageX: 0,
   imageY: 0,
+  puppetMarkPoints: {},
+  markingPuppet: false,
+  puppetMarkRestore: null,
   tool: 'select',
   selected: null,
   pending: null,
@@ -1289,6 +1297,7 @@ function makeThumb(canvas) {
 }
 
 function setActiveImage(entry) {
+  if(app.active!==entry&&(app.puppetMarkRestore||Object.keys(app.puppetMarkPoints||{}).length))clearPuppetMarks();
   app.active = entry || null;
   app.image = entry ? entry.canvas : null;
   if (entry) {
@@ -1458,8 +1467,136 @@ function capsulePoints(cx, cy, length, thickness, angle, steps) {
   return pts;
 }
 
+const PUPPET_MARK_SEQUENCE = [
+  { id:'headTop', label:'sommet de la tête' }, { id:'headBottom', label:'base de la tête / menton' },
+  { id:'shoulderL', label:'épaule gauche de l’image' }, { id:'elbowL', label:'coude gauche' }, { id:'wristL', label:'poignet gauche' },
+  { id:'shoulderR', label:'épaule droite de l’image' }, { id:'elbowR', label:'coude droit' }, { id:'wristR', label:'poignet droit' },
+  { id:'hipL', label:'hanche gauche' }, { id:'kneeL', label:'genou gauche' }, { id:'ankleL', label:'cheville gauche' },
+  { id:'hipR', label:'hanche droite' }, { id:'kneeR', label:'genou droit' }, { id:'ankleR', label:'cheville droite' }
+];
+
+function updatePuppetMarkStatus() {
+  const count=Object.keys(app.puppetMarkPoints).length, next=PUPPET_MARK_SEQUENCE[count];
+  $('puppetMarkStatus').textContent=app.markingPuppet
+    ? 'Point '+(count+1)+' / '+PUPPET_MARK_SEQUENCE.length+' : cliquez sur '+next.label+'. Retour = dernier point · Échap annule tout.'
+    : count===PUPPET_MARK_SEQUENCE.length
+      ? '14 / 14 points prêts · cliquez sur « Créer l’auto-puppet » pour générer le rig.'
+      : count ? count+' / 14 points placés · reprenez le marquage pour compléter le corps.'
+        : 'Repères facultatifs : tête, épaules, coudes, poignets, hanches, genoux et chevilles.';
+}
+
+function startPuppetMarking() {
+  if(!app.active||!app.image){toast('Ouvrez d’abord une image');return;}
+  if($('chkAutoBg').checked)removeActiveBackground(true);
+  app.markingPuppet=true;app.puppetMarkPoints={};app.pending=null;app.drag=null;
+  app.puppetMarkRestore={checked:$('chkRef').checked,alpha:app.refAlpha};
+  $('chkRef').checked=true;$('rngRef').value=82;$('outRef').textContent='82 %';app.refAlpha=.82;
+  if(app.simulating)setSimulating(false);
+  setTool('select');
+  const size=viewSize(),w=app.image.width,h=app.image.height;
+  app.camera.x=app.imageX+w/2;app.camera.y=app.imageY+h/2;
+  app.camera.zoom=PHYS.clamp(Math.min(size.width/(w+30),size.height/(h+30)),.2,4);
+  syncCameraUI();updatePuppetMarkStatus();
+  toast('Cliquez les repères dans l’ordre indiqué à gauche');
+}
+
+function stopPuppetMarking(restoreReference) {
+  app.markingPuppet=false;
+  if(restoreReference&&app.puppetMarkRestore){
+    $('chkRef').checked=app.puppetMarkRestore.checked;app.refAlpha=app.puppetMarkRestore.alpha;
+    $('rngRef').value=Math.round(app.refAlpha*100);$('outRef').textContent=Math.round(app.refAlpha*100)+' %';
+  }
+  app.puppetMarkRestore=null;updatePuppetMarkStatus();
+}
+
+function clearPuppetMarks() {
+  stopPuppetMarking(true);app.puppetMarkPoints={};updatePuppetMarkStatus();
+  toast('Repères du corps effacés');
+}
+
+function drawPuppetMarks(target) {
+  const ids=Object.keys(app.puppetMarkPoints);if(!ids.length)return;
+  const unit=1/Math.max(.08,app.camera.zoom);
+  target.save();target.font=(11*unit)+'px ui-monospace,Menlo,monospace';target.textBaseline='middle';
+  ids.forEach(function(id,index){
+    const p=app.puppetMarkPoints[id],label=PUPPET_MARK_SEQUENCE[index].label;
+    const x=app.imageX+p.x,y=app.imageY+p.y;
+    target.fillStyle='#ffcf4a';target.strokeStyle='#17120a';target.lineWidth=2*unit;
+    target.beginPath();target.arc(x,y,6*unit,0,Math.PI*2);target.fill();target.stroke();
+    target.fillStyle='#fff4cf';target.fillText(String(index+1)+' · '+label,x+9*unit,y);
+  });
+  target.restore();
+}
+
+function clearStarterImageCopy(width,height) {
+  scene.parts.slice().forEach(function(part){
+    const state=part.states[0];
+    if(part.name===app.active.name+' 1'&&part.states.length===1&&state&&state.imgX===0&&state.imgY===0&&state.w===width&&state.h===height)deletePart(part);
+  });
+}
+
+function createPuppetFromMarks() {
+  if(!app.active||!app.image){toast('Ouvrez d’abord une image');return;}
+  if(Object.keys(app.puppetMarkPoints).length!==PUPPET_MARK_SEQUENCE.length){toast('Indiquez d’abord les 14 points du corps');return;}
+  const m=app.puppetMarkPoints, source=app.image,width=source.width,height=source.height,made=[];
+  function add(name,points,parentName,joint){
+    if(!points||points.length<3)return null;
+    const part=createPart(points,name);if(!part)return null;
+    made.push({part:part,parentName:parentName,joint:joint});return part;
+  }
+  function segment(a,b,thickness){
+    const len=Math.hypot(b.x-a.x,b.y-a.y),angle=Math.atan2(b.y-a.y,b.x-a.x);
+    if(len<5)return null;
+    return capsulePoints((a.x+b.x)/2,(a.y+b.y)/2,len,thickness,angle,8);
+  }
+  const shL=m.shoulderL,shR=m.shoulderR,hipL=m.hipL,hipR=m.hipR;
+  const neck={x:(shL.x+shR.x)/2,y:(shL.y+shR.y)/2};
+  const hipMid={x:(hipL.x+hipR.x)/2,y:(hipL.y+hipR.y)/2};
+  if(Math.hypot(neck.x-hipMid.x,neck.y-hipMid.y)<12){toast('Repères trop proches : replacez les épaules et les hanches');return;}
+  const requiredPairs=[['headTop','headBottom'],['shoulderL','elbowL'],['elbowL','wristL'],['shoulderR','elbowR'],['elbowR','wristR'],['hipL','kneeL'],['kneeL','ankleL'],['hipR','kneeR'],['kneeR','ankleR']];
+  if(requiredPairs.some(function(pair){const a=m[pair[0]],b=m[pair[1]];return Math.hypot(a.x-b.x,a.y-b.y)<(pair[0]==='headTop'?8:6);})){toast('Deux repères sont trop proches : reprenez les points');return;}
+  const torso=add('Torse', [neck,shR,hipR,hipL,shL],null,null);
+  const top=m.headTop,bottom=m.headBottom,headAxis={x:bottom.x-top.x,y:bottom.y-top.y};
+  const headH=Math.hypot(headAxis.x,headAxis.y),headRx=Math.max(8,Math.hypot(shR.x-shL.x,shR.y-shL.y)*.19,headH*.38);
+  if(headH>7){
+    const center={x:(top.x+bottom.x)/2,y:(top.y+bottom.y)/2},ux=headAxis.x/headH,uy=headAxis.y/headH;
+    const head=[];for(let i=0;i<20;i++){const a=i*Math.PI*2/20;head.push({x:center.x-uy*Math.cos(a)*headRx+ux*Math.sin(a)*headH*.52,y:center.y+ux*Math.cos(a)*headRx+uy*Math.sin(a)*headH*.52});}
+    add('Tête',head,'Torse',neck);
+  }
+  const shoulderSpan=Math.max(14,Math.hypot(shR.x-shL.x,shR.y-shL.y));
+  const hipSpan=Math.max(14,Math.hypot(hipR.x-hipL.x,hipR.y-hipL.y));
+  [['L','gauche'],['R','droite']].forEach(function(side){
+    const upper=segment(m['shoulder'+side[0]],m['elbow'+side[0]],shoulderSpan*.24);
+    const lower=segment(m['elbow'+side[0]],m['wrist'+side[0]],shoulderSpan*.18);
+    const thigh=segment(m['hip'+side[0]],m['knee'+side[0]],hipSpan*.42);
+    const shin=segment(m['knee'+side[0]],m['ankle'+side[0]],hipSpan*.29);
+    const shoulder=m['shoulder'+side[0]],elbow=m['elbow'+side[0]],hip=m['hip'+side[0]],knee=m['knee'+side[0]];
+    add('Bras '+side[1],upper,'Torse',shoulder);
+    add('Avant-bras '+side[1],lower,'Bras '+side[1],elbow);
+    add('Cuisse '+side[1],thigh,'Torse',hip);
+    add('Jambe '+side[1],shin,'Cuisse '+side[1],knee);
+  });
+  if(!torso||made.length<10||!made.some(function(item){return item.part.name==='Tête';})){
+    made.forEach(function(item){deletePart(item.part);});
+    toast('Des segments sont trop petits : vérifiez les repères puis recommencez');return;
+  }
+  clearStarterImageCopy(width,height);
+  const byName={};made.forEach(function(item){byName[item.part.name]=item.part;});
+  made.forEach(function(item){
+    const parent=byName[item.parentName];if(!parent||!item.joint)return;
+    attachJoint(item.part,parent,app.imageX+item.joint.x,app.imageY+item.joint.y);
+  });
+  select(torso);setTool('select');fitCamera();stopPuppetMarking(true);
+  app.puppetMarkPoints={};updatePuppetMarkStatus();
+  toast('Marionnette guidée créée · '+made.length+' morceaux articulés');
+}
+
 function autoPuppet() {
   if(!app.active||!app.image){toast('Ouvrez d’abord une image');return;}
+  if(app.markingPuppet){toast('Terminez les repères ou appuyez sur Échap');return;}
+  const marked=Object.keys(app.puppetMarkPoints).length;
+  if(marked===PUPPET_MARK_SEQUENCE.length){createPuppetFromMarks();return;}
+  if(marked){toast('Complétez les repères ou effacez-les pour le mode estimé');return;}
   if($('chkAutoBg').checked)removeActiveBackground(true);
   const source=app.image, width=source.width,height=source.height;
   const pixels=source.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data;
@@ -1470,10 +1607,7 @@ function autoPuppet() {
   if(w<12||h<24){toast('Sujet trop petit pour créer une marionnette');return;}
   const made=[];
   /* Remplace la copie entière créée lors de l’import, si elle est encore intacte. */
-  scene.parts.slice().forEach(function(part){
-    const state=part.states[0];
-    if(part.name===app.active.name+' 1'&&part.states.length===1&&state&&state.imgX===0&&state.imgY===0&&state.w===width&&state.h===height)deletePart(part);
-  });
+  clearStarterImageCopy(width,height);
   function add(name,points,parentName,jointX,jointY){
     const part=createPart(points,name);if(!part)return null;made.push({part,parentName,jointX,jointY});return part;
   }
@@ -2228,6 +2362,7 @@ function render() {
   drawParts(ctx);
   if ($('chkRig').checked) drawRig(ctx);
   drawDraft(ctx);
+  drawPuppetMarks(ctx);
   ctx.restore();
 }
 
@@ -2853,6 +2988,18 @@ function startPan(event) {
 }
 
 function onPointerDown(event) {
+  if(app.markingPuppet&&event.button!==2){
+    event.preventDefault();canvas.setPointerCapture(event.pointerId);
+    const world=pointerWorld(event),x=world.x-app.imageX,y=world.y-app.imageY;
+    if(x<0||y<0||x>app.image.width||y>app.image.height){toast('Cliquez sur l’image du personnage');return;}
+    const marker=PUPPET_MARK_SEQUENCE[Object.keys(app.puppetMarkPoints).length];
+    if(!marker)return;
+    app.puppetMarkPoints[marker.id]={x:x,y:y};
+    const count=Object.keys(app.puppetMarkPoints).length;
+    if(count===PUPPET_MARK_SEQUENCE.length){app.markingPuppet=false;updatePuppetMarkStatus();toast('Repères terminés · cliquez sur Créer l’auto-puppet');}
+    else {updatePuppetMarkStatus();toast('Point '+count+' placé · suivant : '+PUPPET_MARK_SEQUENCE[count].label);}
+    return;
+  }
   if (event.button === 2) return;
   canvas.setPointerCapture(event.pointerId);
   const world = pointerWorld(event);
@@ -3192,6 +3339,8 @@ function bindControls() {
   $('imageInput').addEventListener('change', function () { loadImages(this.files); this.value = ''; });
   $('rngBgTolerance').addEventListener('input',function(){ $('outBgTolerance').textContent=this.value; });
   $('btnRemoveBg').addEventListener('click',function(){removeActiveBackground(false);});
+  $('btnMarkPuppet').addEventListener('click',startPuppetMarking);
+  $('btnClearPuppetMarks').addEventListener('click',clearPuppetMarks);
   $('btnAutoPuppet').addEventListener('click',autoPuppet);
   $('btnAddCopy').addEventListener('click', function () { addImageCopy(app.active); });
   $('btnDelImage').addEventListener('click', function () {
@@ -3641,8 +3790,13 @@ function isTyping(target) {
 function onKeyDown(event) {
   if (isTyping(event.target)) return;
   const key = event.key.toLowerCase();
+  if(app.markingPuppet&&(key==='backspace'||key==='delete')){
+    const last=PUPPET_MARK_SEQUENCE[Object.keys(app.puppetMarkPoints).length-1];
+    if(last)delete app.puppetMarkPoints[last.id];
+    updatePuppetMarkStatus();event.preventDefault();toast('Dernier repère annulé');return;
+  }
   if (key === 'enter') { validateDraft(); event.preventDefault(); return; }
-  if (key === 'escape') { closeMenu(); cancelDraft(); return; }
+  if (key === 'escape') { if(app.markingPuppet||app.puppetMarkRestore){clearPuppetMarks();return;} closeMenu(); cancelDraft(); return; }
   if (key === ' ') { setSimulating(!app.simulating); event.preventDefault(); return; }
   if (key === 'r') { setRecording(!app.recording); return; }
   if (key === 'delete' || key === 'backspace') { deletePart(app.selected); event.preventDefault(); return; }
@@ -3741,6 +3895,7 @@ function init() {
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', function (event) {
     event.preventDefault();
+    if(app.markingPuppet)return;
     if (app.draft.length > 2) { validateDraft(); return; }
     if (app.draft.length || app.pending) { cancelDraft(); return; }
     const world = pointerWorld(event);
