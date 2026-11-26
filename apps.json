@@ -118,5 +118,15 @@
     "url": "./apps/roto-studio/index.html",
     "type": "HTML",
     "color": "#c8d8f0"
+  },
+  {
+    "id": "lyriq",
+    "title": "Lyriq — écran à paroles",
+    "description": "Affiche des paroles synchronisées, connecte Spotify et personnalise un écran animé pour tes morceaux.",
+    "category": "Musique & paroles",
+    "emoji": "🎤",
+    "url": "./apps/lyriq/index.html",
+    "type": "HTML",
+    "color": "#b8a5f5"
   }
 ]
