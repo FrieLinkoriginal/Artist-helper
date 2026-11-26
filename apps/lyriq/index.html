@@ -183,7 +183,7 @@ body[data-style="vhs"] #stage::after{opacity:.5}
 }
 
 /* pulse / disco */
-[data-style="pulse"] .ln.current{animation:beat 1.05s ease-in-out infinite}
+[data-style="pulse"] .ln.current{animation:beat var(--beat-duration,1.05s) ease-in-out infinite}
 [data-style="pulse"] .ln.next,[data-style="pulse"] .ln.prev{opacity:.18}
 @keyframes beat{0%,100%{transform:scale(1)}12%{transform:scale(1.055)}24%{transform:scale(1)}36%{transform:scale(1.03)}}
 
@@ -874,14 +874,14 @@ kbd{font-family:inherit}
       <div id="scatterOpts" style="display:none">
         <label class="fld">Disposition</label>
         <select id="scatterMode">
-          <option value="random">Éclaté aléatoire (chaque ligne bouge)</option>
+          <option value="random">Aléatoire lisible (mots dans l’ordre)</option>
           <option value="grid">En grille (mots alignés)</option>
         </select>
         <div class="row between" style="margin-top:10px"><span class="lbl">Amplitude <b id="spreadLbl">85%</b></span></div>
         <input type="range" id="spreadRange" min="30" max="100" step="1" value="85">
         <div class="row between"><span class="lbl">Vitesse mot à mot <b id="rateLbl">60%</b></span></div>
         <input type="range" id="rateRange" min="0" max="100" step="1" value="60">
-        <p class="hint">Chaque mot apparaît à <b>sa propre place</b> sur l'écran, l'un après l'autre. Amplitude = à quel point ils s'éloignent du centre.</p>
+        <p class="hint">Les mots gardent leur ordre de lecture et se répartissent en lignes légèrement décalées. Leur apparition suit le timing des paroles. Amplitude = largeur occupée à l'écran.</p>
       </div>
 
       <div class="sep"></div>
@@ -901,7 +901,7 @@ kbd{font-family:inherit}
       <div class="sep"></div>
       <div class="row between"><span class="lbl">Pulsation (aimant / disco)&nbsp; <b id="rhythmLbl">1.0×</b></span></div>
       <input type="range" id="rhythmRange" min="0.5" max="2.5" step="0.1" value="1">
-      <p class="hint">Vitesse du mot qui « saute » dans le style Aimant. Remets-le à 1.0 environ et ajuste à l'oreille.</p>
+      <p class="hint">Règle la vitesse des accents visuels Aimant / Pulsation. La synchronisation des paroles suit les horodatages LRC et Spotify ; ce réglage n'analyse pas les battements audio.</p>
     </section>
 
     <section data-pane="fond" hidden>
@@ -1259,7 +1259,6 @@ function activeTimed(t){
 /* ---------- rendu paroles ---------- */
 const FILL_STYLES = new Set(['neon','pulse','minimal','bounce','rise','zoom','drop','shadow','wave','magnet','liquid','stamp','breathe','flicker']);
 const NO_SCATTER = new Set(['marquee','stack']);
-const SCATTER_SLOTS = [[50,60],[28,44],[73,50],[15,27],[85,30],[42,72],[69,78],[17,78],[36,24]];
 const SCRAMBLE = '#%&@!?<>*/\\|=+-';
 
 const SCATTER_ANIM = {
@@ -1297,7 +1296,9 @@ function hash01(n){ const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x
 function lineDurMs(i){
   const ln = L.lines[i];
   if (!ln) return 3000;
-  if (ln.t != null && ln.end != null) return clamp((ln.end - ln.t) * 1000, 1600, 16000);
+  // Keep the real LRC interval: the old 1.6s minimum made word reveals
+  // lag behind short lyric lines and the next Spotify timestamp.
+  if (ln.t != null && ln.end != null) return clamp((ln.end - ln.t) * 1000, 250, 16000);
   return Math.max(900, S.speed * 1000);
 }
 function totalMs(){ let s = 0; for (let i=0;i<L.lines.length;i++) s += lineDurMs(i); return s || 1; }
@@ -1352,48 +1353,76 @@ function buildWords(el, text, scatter){
 function placeScatter(el, wps, idx){
   const host = $('#lyrics');
   const W = host.clientWidth, H = host.clientHeight;
-  const n = wps.length;
+  if (!wps.length || !W || !H) return;
   const spread = S.scatter.spread / 100;
-  const grid = S.scatter.mode === 'grid';
-  const order = [...Array(Math.max(9, n)).keys()];
-  if (!grid) order.sort((a,b) => hash01(idx*97 + a*13) - hash01(idx*97 + b*13));
-  const cols = Math.ceil(Math.sqrt(Math.max(1, n)));
-  const rows = Math.ceil(n / cols);
-  wps.forEach((wp, i) => {
-    const wi = wp.firstChild;
-    const ww = wi.offsetWidth || 90;
-    const wh = wi.offsetHeight || 40;
-    let xp, yp;
-    if (grid){
-      const cx = i % cols, cy = Math.floor(i / cols);
-      xp = ((cx + 0.5) / cols) * 100;
-      yp = ((cy + 0.5) / rows) * 100;
-    } else {
-      const slot = SCATTER_SLOTS[order[i] % SCATTER_SLOTS.length];
-      xp = slot[0] + (hash01(idx*7 + i*3.1) - .5) * 14;
-      yp = slot[1] + (hash01(idx*13 + i*5.7) - .5) * 16;
+  const random = S.scatter.mode === 'random';
+  const available = Math.max(120, W * spread);
+  const firstWord = wps[0].firstChild;
+  const baseSize = parseFloat(getComputedStyle(firstWord).fontSize) || 48;
+  const gap = clamp(baseSize * .42, 12, 42);
+
+  // Lay words out in their original reading order. Random mode only varies
+  // the alignment of each row, never the order of the words themselves.
+  function makeRows(scale){
+    const rows = [];
+    let row = { items:[], width:0, height:0 };
+    for (const wp of wps){
+      const wi = wp.firstChild;
+      const width = Math.max(8, wi.offsetWidth) * scale;
+      const height = Math.max(baseSize * .9, wi.offsetHeight) * scale;
+      const extra = row.items.length ? gap * scale : 0;
+      if (row.items.length && row.width + extra + width > available){
+        rows.push(row);
+        row = { items:[], width:0, height:0 };
+      }
+      const space = row.items.length ? gap * scale : 0;
+      row.items.push({ wp, width, height, x:row.width + space });
+      row.width += space + width;
+      row.height = Math.max(row.height, height);
     }
-    xp = 50 + (xp - 50) * spread;
-    yp = 50 + (yp - 50) * spread;
-    const px = clamp(W * xp / 100 - ww / 2, 12, Math.max(12, W - ww - 12));
-    const py = clamp(H * yp / 100 - wh / 2, 40, Math.max(40, H - wh - 70));
-    wp.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
-    wi.style.setProperty('--rot', (hash01(idx*31 + i*7) * 10 - 5).toFixed(1) + 'deg');
+    if (row.items.length) rows.push(row);
+    const rowGap = clamp(baseSize * .22, 8, 24) * scale;
+    const totalHeight = rows.reduce((sum, r) => sum + r.height, 0) + Math.max(0, rows.length - 1) * rowGap;
+    return { rows, rowGap, totalHeight };
+  }
+
+  let scale = 1;
+  let layout = makeRows(scale);
+  if (layout.totalHeight > H * .74){
+    scale = Math.max(.5, (H * .74) / layout.totalHeight);
+    layout = makeRows(scale);
+  }
+  const top = Math.max(30, (H - layout.totalHeight) / 2);
+  let y = top;
+  layout.rows.forEach((row, ri) => {
+    const spare = Math.max(0, available - row.width);
+    const offset = random ? (hash01(idx * 19 + ri * 7.1) - .5) * Math.min(spare * .7, baseSize * scale * 1.2) : 0;
+    const x0 = Math.max(12, (W - available) / 2 + (available - row.width) / 2 + offset);
+    const rowJitter = random ? (hash01(idx * 31 + ri * 11.3) - .5) * Math.min(10, row.height * .12) : 0;
+    for (const item of row.items){
+      const px = clamp(x0 + item.x, 10, Math.max(10, W - item.width - 10));
+      item.wp.style.transformOrigin = 'top left';
+      item.wp.style.transform = `translate(${px.toFixed(1)}px, ${(y + rowJitter).toFixed(1)}px) scale(${scale.toFixed(3)})`;
+    }
+    y += row.height + layout.rowGap;
   });
 }
 
 /* apparition "un mot après l'autre", calée sur la durée de la ligne */
 function applyWordTiming(wis){
-  const dur = lineDurMs(lineFx.idx);
-  const rate = S.scatter.rate / 100;
-  const win = Math.max(300, dur * (0.2 + 0.7 * rate) - 500);
+  const lineMs = lineDurMs(lineFx.idx);
+  const rate = clamp(S.scatter.rate, 0, 100) / 100;
   const anim = SCATTER_ANIM[S.style] || SCATTER_ANIM.minimal;
+  const baseAnimMs = parseFloat(anim.dur) * 1000 || 450;
+  // Reveal starts and finishes inside the current lyric's actual time window.
+  const animMs = Math.min(baseAnimMs, Math.max(120, lineMs * .3));
+  const maxDelay = Math.max(0, lineMs - animMs);
+  const revealWindow = maxDelay * (.2 + .8 * rate);
   const total = Math.max(1, wis.length - 1);
   wis.forEach((w, i) => {
-    const jitter = hash01(i * 7.7 + lineFx.idx * 3.3) * 120;
-    const d = wis.length <= 1 ? 0 : (i / total) * win + jitter;
-    w.style.animation = `${anim.name} ${anim.dur} ${anim.ease} forwards`;
-    w.style.animationDelay = (d / 1000).toFixed(2) + 's';
+    const delay = wis.length <= 1 ? 0 : (i / total) * revealWindow;
+    w.style.animation = `${anim.name} ${(animMs / 1000).toFixed(2)}s ${anim.ease} both`;
+    w.style.animationDelay = (delay / 1000).toFixed(2) + 's';
   });
 }
 
@@ -1497,7 +1526,7 @@ function render(force=false){
   }
   if (SP.track && clock.synced && L.timed){
     const est = SP.track.progress + ((performance.now() - SP.track.fetchedAt) / 1000) * (SP.track.playing ? 1 : 0);
-    if (Math.abs(est - clockNow()) > 1.2){
+    if (Math.abs(est - clockNow()) > 0.35){
       clockTo(est);
       render(true);
     }
@@ -1512,7 +1541,8 @@ function render(force=false){
       refs.cur.style.setProperty('--p', (progress*100).toFixed(1)+'%');
     }
     if (S.style === 'magnet' && refs.words.length){
-      const beats = (now - lineFx.start) / (1000 * Math.max(0.4, S.rhythm));
+      const beatTime = clock.synced && L.timed ? clockNow() - S.offset : now / 1000;
+      const beats = beatTime / Math.max(0.4, S.rhythm);
       const k = Math.floor(beats * 1.6) % refs.words.length;
       if (k !== refs.magK){
         refs.words.forEach((w,i) => w.classList.toggle('on', i === k));
@@ -1761,6 +1791,7 @@ function applyLook(){
   host.dataset.style = S.style;
   host.style.setProperty('--tsize', S.size + 'vmin');
   host.style.setProperty('--lyrFont', S.font);
+  host.style.setProperty('--beat-duration', (1.05 / Math.max(.5, S.rhythm)).toFixed(2) + 's');
   document.body.dataset.style = S.style;
   host.classList.toggle('scatter', S.scatter.on && !NO_SCATTER.has(S.style));
   host.classList.toggle('chaos', S.scatter.on && S.scatter.mode === 'random' && !NO_SCATTER.has(S.style));
@@ -2706,6 +2737,7 @@ function wirePanel(){
   $('#rhythmRange').addEventListener('input', e => {
     S.rhythm = parseFloat(e.target.value);
     $('#rhythmLbl').textContent = S.rhythm.toFixed(1) + '×';
+    applyLook();
     save();
   });
   $('#startSyncBtn').addEventListener('click', () => {
