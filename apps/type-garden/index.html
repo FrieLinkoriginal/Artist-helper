@@ -18,6 +18,12 @@
     -webkit-font-smoothing:antialiased;
   }
   #cv{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:text}
+  #pages{position:fixed;left:18px;top:16px;z-index:35;display:flex;gap:5px;padding:5px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(8,6,7,.75);backdrop-filter:blur(12px);pointer-events:auto}
+  .page-tab{border:1px solid transparent;background:transparent;color:#a9a2a0;border-radius:8px;padding:8px 10px;cursor:pointer;font:500 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;transition:.18s}
+  .page-tab:hover{color:#fff;border-color:#ffffff38}
+  .page-tab.on{color:#160a05;background:linear-gradient(135deg,#fff0bf,#ff9d43);border-color:#ffd276}
+  .fire-page .garden-only{display:none!important}
+  .fire-page #legend{display:none}
   #field{
     position:fixed; opacity:0; pointer-events:none;
     left:-100px; top:0; width:10px; height:10px;
@@ -193,6 +199,8 @@
   @keyframes blink{50%{opacity:.15}}
 
   @media (max-width:760px){
+    #pages{left:8px;top:8px}
+    .page-tab{padding:7px 8px;font-size:9px}
     #legend{display:none}
     #bar{flex-direction:column; align-items:stretch; gap:10px; padding:12px 12px 14px}
     #brand{text-align:center}
@@ -210,6 +218,10 @@
 
 <canvas id="cv"></canvas>
 <input id="field" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Tapez votre texte">
+<nav id="pages" aria-label="Pages créatives">
+  <button class="page-tab on" data-page="garden" aria-pressed="true">01 · Jardin</button>
+  <button class="page-tab" data-page="fire" aria-pressed="false">02 · Feu &amp; cire</button>
+</nav>
 
 <div id="hint">
   <b>tapez</b> pour planter &nbsp;·&nbsp; <b>espace</b> coupe &nbsp;·&nbsp; <b>retour</b> fane
@@ -223,12 +235,12 @@
     <p>Herbier typographique · 26 espèces</p>
   </div>
   <div id="panel">
-    <div class="grp" id="swatches"></div>
-    <div class="grp" id="presets"></div>
+    <div class="grp garden-only" id="swatches"></div>
+    <div class="grp garden-only" id="presets"></div>
     <div class="grp">
       <button class="ico" id="btnDrawer" title="Espèces, couleurs, animation, export">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg>
-        Fleurs
+        Options
       </button>
       <button class="ico" id="btnPng" title="Exporter en PNG (avec le fond)">
         <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 11l5 4 5-4"/><path d="M5 19h14"/></svg>
@@ -241,18 +253,18 @@
 </div>
 
 <div id="drawer">
-  <div class="dh">
+  <div class="dh garden-only">
     <h2>Espèces plantées — <b id="spCount">26</b>/26</h2>
     <button class="mini" id="btnAll">tout</button>
   </div>
-  <div id="spGrid"></div>
-  <p class="note">clic sur une fleur : choisir sa couleur · case : la planter ou la retirer</p>
+  <div id="spGrid" class="garden-only"></div>
+  <p class="note garden-only">clic sur une fleur : choisir sa couleur · case : la planter ou la retirer</p>
 
-  <div class="dh">
+  <div class="dh garden-only">
     <h2>Couleur — <b id="colName">sélectionnez une fleur</b></h2>
     <button class="mini" id="btnAuto">auto</button>
   </div>
-  <div id="colRow"></div>
+  <div id="colRow" class="garden-only"></div>
 
   <div class="dh"><h2>Apparition du texte</h2></div>
   <div id="animRow"></div>
@@ -758,7 +770,10 @@ const g     = cv.getContext('2d');
 const field = document.getElementById('field');
 const B     = backend(g);
 
+const FIRE_THEME = { bg:'#090303', text:'#fff3c6', red:'#ff5624', accent:'#ffb13b', line:'#ff7b32', blue:'#6a1710', vein:'#ffd37a' };
+
 const app = {
+  page: 'garden',
   letters: [], uid: 1, t0: performance.now(), lastKey: 0,
   mx: null, my: null,
   palette: 0, preset: 'breathe', boil: true,
@@ -773,7 +788,27 @@ const app = {
   rec: false
 };
 
-function font(S){ return `700 ${S}px Georgia, "Times New Roman", serif`; }
+function setPage(page){
+  app.page=page==='fire'?'fire':'garden';
+  document.body.classList.toggle('fire-page',app.page==='fire');
+  if(app.page==='fire')app.transparent=false;
+  layout();
+  app.letters.forEach(function(letter){
+    if(letter.ch===' ')return;
+    if(app.page==='garden')genLetter(letter);else letter.els=[];
+  });
+  document.querySelectorAll('.page-tab').forEach(function(button){button.classList.toggle('on',button.dataset.page===app.page);button.setAttribute('aria-pressed',String(button.dataset.page===app.page));});
+  document.getElementById('btnDrawer').title=app.page==='fire'?'Animation du texte et export':'Réglages du jardin et export';
+  document.querySelector('#brand h1').innerHTML=app.page==='fire'?'Type <em>Fire</em>':'Type <em>Garden</em>';
+  document.querySelector('#brand p').textContent=app.page==='fire'?'Lettres de feu · cire fondue':'Herbier typographique · 26 espèces';
+  document.getElementById('btnDrawer').lastChild.textContent=' Options';
+  document.getElementById('hint').innerHTML=app.page==='fire'
+    ? '<b>tapez</b> pour allumer &nbsp;·&nbsp; <b>espace</b> fait couler la cire &nbsp;·&nbsp; <b>retour</b> efface'
+    : '<b>tapez</b> pour planter &nbsp;·&nbsp; <b>espace</b> coupe &nbsp;·&nbsp; <b>retour</b> fane';
+  refreshLegend();
+}
+
+function font(S){  return `700 ${S}px Georgia, "Times New Roman", serif`; }
 const _cache = new Map();
 function measure(ch){
   if (_cache.has(ch)) return _cache.get(ch);
@@ -945,7 +980,7 @@ function add(ch){
   app.letters.push(l);
   layout();
   if (l.x == null){ l.x = l.tx; l.y = l.ty; }
-  genLetter(l);
+  if(app.page==='garden')genLetter(l);else l.els=[];
 }
 
 function backspace(){
@@ -958,6 +993,10 @@ function backspace(){
 
 function cutSpace(){
   const live = app.letters.filter(l => !l.dead);
+  if(app.page==='fire'){
+    const last=live[live.length-1];if(last&&last.ch!==' ')last.meltBoost=Math.min(5,(last.meltBoost||0)+1);
+    return;
+  }
   const sp = live.filter(l => l.ch === ' ');
   if (!sp.length) return;
   const l = sp[sp.length - 1];
@@ -1001,7 +1040,7 @@ function animState(l, now){
 }
 
 /* ── dessin ────────────────────────────────────────────────── */
-function pal(){ return PALETTES[app.palette]; }
+function pal(){ return app.page === 'fire' ? FIRE_THEME : PALETTES[app.palette]; }
 
 function warp(l, x, y, now){
   const S = app.S || 100;
@@ -1152,6 +1191,42 @@ function drawFlies(now, C){
   }
 }
 
+function drawFireLetter(l,now){
+  if(l._a<=0)return;
+  const S=app.S||100,bob=app.boil?Math.sin(now/630+l.id)*S*.006:0;
+  g.save();g.globalAlpha=l._a;g.translate(l.x,l.y+l._dy+bob);if(l._s!==1)g.scale(l._s,l._s);g.font=font(S);g.textAlign='center';g.textBaseline='alphabetic';
+  const width=Math.max(S*.24,g.measureText(l.ch).width),flicker=.5+.5*Math.sin(now*.018+l.id*2.3);
+  const seed=mulberry32(l.id*9187+73);
+  // Warm flame tongues rise from the top of each glyph.
+  const flameCount=Math.max(2,Math.min(5,Math.round(width/S*5)));
+  for(let i=0;i<flameCount;i++){
+    const fx=(seed()-.5)*width*.78,phase=now*.012+l.id*1.7+i*2.2;
+    const fh=S*(.12+.12*(.5+.5*Math.sin(phase))),fw=S*(.045+.018*flicker);
+    const grad=g.createLinearGradient(0,-S*.60,0,-S*.60-fh);
+    grad.addColorStop(0,'rgba(255,93,21,.92)');grad.addColorStop(.55,'rgba(255,180,47,.85)');grad.addColorStop(1,'rgba(255,239,170,0)');
+    g.fillStyle=grad;g.beginPath();g.moveTo(fx-fw,-S*.62);g.quadraticCurveTo(fx-fw*.9,-S*.62-fh*.62,fx+Math.sin(phase)*fw*.7,-S*.62-fh);
+    g.quadraticCurveTo(fx+fw*1.5,-S*.62-fh*.54,fx+fw,-S*.62);g.closePath();g.fill();
+  }
+  // A hot core, an orange body, and a red outer glow.
+  g.shadowColor='#ff3013';g.shadowBlur=S*(.16+.1*flicker);g.lineJoin='round';g.lineWidth=Math.max(1,S*.025);g.strokeStyle='#bd2812';g.strokeText(l.ch,0,0);
+  const grad=g.createLinearGradient(0,-S*.82,0,S*.04);
+  grad.addColorStop(0,'#fff6c7');grad.addColorStop(.22,'#ffd66b');grad.addColorStop(.58,'#ff8a2d');grad.addColorStop(1,'#df3218');
+  g.fillStyle=grad;g.fillText(l.ch,0,0);
+  g.shadowColor='#ffd166';g.shadowBlur=S*.045;g.lineWidth=Math.max(.6,S*.008);g.strokeStyle='rgba(255,239,180,.65)';g.strokeText(l.ch,0,0);g.shadowBlur=0;
+  // Candle-like wax/blood drips lengthen and shrink slowly below each letter.
+  const drops=Math.max(2,Math.min(5,Math.ceil(width/S*5)));
+  for(let i=0;i<drops;i++){
+    const dx=-width*.42+(i+.5)*width/drops+(seed()-.5)*width*.08;
+    const phase=now*.0011+l.id*1.9+i*1.4,amount=.5+.5*Math.sin(phase);
+    const len=S*(.055+.17*amount+Math.min(.17,(l.meltBoost||0)*.034)),thick=S*(.018+.014*seed());
+    g.lineCap='round';g.lineWidth=thick;g.strokeStyle=i%2?'#e43822':'#ff5826';g.shadowColor='#fa2c16';g.shadowBlur=S*.07;
+    g.beginPath();g.moveTo(dx,-S*.015);g.bezierCurveTo(dx-thick*.25,S*.025,dx+Math.sin(phase)*thick*.3,len*.72,dx+Math.sin(phase)*thick*.6,len);g.stroke();
+    g.fillStyle=i%2?'#d9251c':'#ff6530';g.beginPath();g.ellipse(dx+Math.sin(phase)*thick*.6,len,thick*.53,thick*.78,0,0,Math.PI*2);g.fill();
+    g.fillStyle='rgba(255,218,133,.8)';g.beginPath();g.arc(dx-thick*.18,len*.46,Math.max(.6,thick*.12),0,Math.PI*2);g.fill();
+  }
+  g.restore();
+}
+
 function draw(now){
   const C = pal();
   g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1169,30 +1244,28 @@ function draw(now){
     animState(l, now);
   }
 
-  for (const l of app.letters){
+  if(app.page==='garden')for (const l of app.letters){
     if (l.ch === ' ' || !l.els) continue;
     for (const e of l.els) if (e.layer === 0) drawStem(e, l, now - l.birth, C, now);
   }
 
   const S = app.S;
   if (S){
-    g.font = font(S);
-    g.textAlign = 'center';
-    g.textBaseline = 'alphabetic';
-    for (const l of app.letters){
-      if (l.ch === ' ' || l._a <= 0) continue;
-      const bob = app.boil ? Math.sin(now / 700 + l.id) * S * .006 : 0;
-      g.save();
-      g.globalAlpha = l._a;
-      g.translate(l.x, l.y + bob + l._dy);
-      if (l._s !== 1) g.scale(l._s, l._s);
-      g.fillStyle = C.text;
-      g.fillText(l.ch, 0, 0);
-      g.restore();
+    if(app.page==='fire'){
+      for(const l of app.letters)if(l.ch!==' ')drawFireLetter(l,now);
+    }else{
+      g.font = font(S);g.textAlign = 'center';g.textBaseline = 'alphabetic';
+      for (const l of app.letters){
+        if (l.ch === ' ' || l._a <= 0) continue;
+        const bob = app.boil ? Math.sin(now / 700 + l.id) * S * .006 : 0;
+        g.save();g.globalAlpha = l._a;g.translate(l.x, l.y + bob + l._dy);
+        if (l._s !== 1) g.scale(l._s, l._s);
+        g.fillStyle = C.text;g.fillText(l.ch, 0, 0);g.restore();
+      }
     }
   }
 
-  for (const l of app.letters){
+  if(app.page==='garden')for (const l of app.letters){
     if (l.ch === ' ' || !l.els) continue;
     for (const e of l.els) if (e.layer === 1) drawStem(e, l, now - l.birth, C, now);
   }
@@ -1208,7 +1281,7 @@ function draw(now){
     g.globalAlpha = 1;
   }
 
-  drawFlies(now, C);
+  if(app.page==='garden')drawFlies(now, C);
 }
 
 /* ── boucle ────────────────────────────────────────────────── */
@@ -1268,6 +1341,8 @@ function toast(msg){
   clearTimeout(t._h);
   t._h = setTimeout(() => t.classList.remove('on'), 1800);
 }
+
+document.querySelectorAll('.page-tab').forEach(function(button){button.addEventListener('click',function(){setPage(this.dataset.page);});});
 
 const swBox = document.getElementById('swatches');
 PALETTES.forEach((p, i) => {
